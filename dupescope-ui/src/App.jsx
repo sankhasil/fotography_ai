@@ -1,278 +1,257 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
-// ─── Theme tokens ────────────────────────────────────────────────────────────
+// ─── Theme tokens ─────────────────────────────────────────────────────────────
 const THEMES = {
   dark: {
-    bg: "#0d0d0f",
-    bgPanel: "#131316",
-    bgCard: "#1a1a1f",
-    bgInput: "#1f1f26",
-    border: "#2a2a35",
-    borderHov: "#3d3d50",
-    accent: "#7c6af7",
-    accentDim: "#3d3568",
-    success: "#3ecf8e",
-    warn: "#f5a623",
-    danger: "#e05252",
-    txt: "#e8e8f0",
-    txtMuted: "#7a7a95",
-    txtDim: "#4a4a60",
-    mono: "'JetBrains Mono', monospace",
-    sans: "'DM Sans', system-ui, sans-serif",
-    selectedBg: "#1e1a38"
+    bg: "#0d0d0f", bgPanel: "#131316", bgCard: "#1a1a1f", bgInput: "#1f1f26",
+    border: "#2a2a35", borderHov: "#3d3d50",
+    accent: "#7c6af7", accentDim: "#3d3568",
+    success: "#3ecf8e", warn: "#f5a623", danger: "#e05252",
+    txt: "#e8e8f0", txtMuted: "#7a7a95", txtDim: "#4a4a60",
+    mono: "'JetBrains Mono', monospace", sans: "'DM Sans', system-ui, sans-serif",
+    selectedBg: "#1e1a38", tableBg: "#14141a", tableAlt: "#17171e",
   },
-
   light: {
-    bg: "#f7f7fb",
-    bgPanel: "#ffffff",
-    bgCard: "#ffffff",
-    bgInput: "#f1f1f6",
-    border: "#dcdce6",
-    borderHov: "#c5c5d6",
-    accent: "#6b5cff",
-    accentDim: "#dcd8ff",
-    success: "#2fbf71",
-    warn: "#e09a1a",
-    danger: "#d64545",
-    txt: "#1a1a1f",
-    txtMuted: "#5a5a70",
-    txtDim: "#8a8aa0",
-    mono: "'JetBrains Mono', monospace",
-    sans: "'DM Sans', system-ui, sans-serif",
-     selectedBg: "#e8e6ff"
-  }
+    bg: "#f7f7fb", bgPanel: "#ffffff", bgCard: "#ffffff", bgInput: "#f1f1f6",
+    border: "#dcdce6", borderHov: "#c5c5d6",
+    accent: "#6b5cff", accentDim: "#dcd8ff",
+    success: "#2fbf71", warn: "#e09a1a", danger: "#d64545",
+    txt: "#1a1a1f", txtMuted: "#5a5a70", txtDim: "#8a8aa0",
+    mono: "'JetBrains Mono', monospace", sans: "'DM Sans', system-ui, sans-serif",
+    selectedBg: "#e8e6ff", tableBg: "#f4f4f8", tableAlt: "#ffffff",
+  },
 };
 
-// ─── Tiny style helpers ──────────────────────────────────────────────────────
-const css = (obj) => Object.entries(obj).map(([k,v])=>`${k.replace(/([A-Z])/g,m=>'-'+m.toLowerCase())}:${v}`).join(';');
+// ─── API base ─────────────────────────────────────────────────────────────────
+const API = "http://localhost:5000";
 
+async function apiFetch(method, path, body = null) {
+  const res = await fetch(API + path, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
 
-// ─── Suggested prompts for the AI bot ───────────────────────────────────────
+// ─── Suggestions ──────────────────────────────────────────────────────────────
 const SUGGESTIONS = [
-  "How should I organize 10,000+ photos on my hard drive?",
-  "What's the best folder structure for travel photography?",
+  "How should I organise 10,000+ photos on my hard drive?",
+  "Best folder structure for travel photography?",
   "Help me cull duplicate photos — what to keep?",
   "Explain RAW vs JPEG for photo archiving",
   "Tips for naming photos so they sort well by date",
-  "What metadata should I always preserve?",
   "Best backup strategy for a large photo library?",
-  "How do I find the sharpest shot in a burst series?",
 ];
 
-// ─── AI Chat using Anthropic API ─────────────────────────────────────────────
 const SYSTEM_PROMPT = `You are a professional photography assistant and photo library expert named "Iris".
-You specialise in:
-- Photography technique (composition, exposure, lighting, focus)
-- Photo library organisation (folder structures, naming conventions, metadata, tagging)
-- Duplicate detection strategy (what to keep, culling bursts, RAW+JPEG pairs)
-- Backup workflows (3-2-1 rule, cloud vs local, NAS, archival)
-- File formats and colour spaces (RAW, JPEG, HEIC, PNG, TIFF, sRGB, AdobeRGB)
-- Photo editing workflows (Lightroom, Darktable, RawTherapee, digiKam)
-- Privacy-first approaches (local-only tools, offline workflows)
-
-Keep answers concise, practical, and structured. Use bullet points where helpful.
-When asked about duplicate photo decisions, always give a clear recommendation.
-Respond in a warm but expert tone. Never recommend paid software without also mentioning a free alternative.`;
+You specialise in photography technique, photo library organisation, duplicate detection strategy,
+backup workflows, file formats, and privacy-first offline tools.
+Keep answers concise, practical, and structured. Use bullet points where helpful.`;
 
 async function askIris(messages) {
   const res = await fetch("http://localhost:11434/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "llava",
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        ...messages
-      ],
-      stream: false
+      model: "llava", stream: false,
+      messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
     }),
   });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) throw new Error(`Ollama error ${res.status}`);
   const data = await res.json();
-  return data.content.find(b => b.type === "text")?.text || "No response.";
+  return data.message?.content || "No response.";
 }
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
+// ─── Shared UI primitives ─────────────────────────────────────────────────────
+function Stat({ label, value, color, T }) {
+  return (
+    <div style={{ background: T.bgCard, borderRadius: 8, padding: "12px 16px", border: `1px solid ${T.border}` }}>
+      <div style={{ fontSize: 20, fontWeight: 600, color: color || T.txt, fontFamily: T.mono, letterSpacing: "-0.02em" }}>{value}</div>
+      <div style={{ fontSize: 10, color: T.txtMuted, marginTop: 3, letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</div>
+    </div>
+  );
+}
+
+function Badge({ type, T }) {
+  return type === "exact"
+    ? <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 3, background: "#1a3a25", color: T.success, letterSpacing: "0.08em", fontWeight: 600, fontFamily: T.mono }}>EXACT</span>
+    : <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 3, background: "#3a2a10", color: T.warn, letterSpacing: "0.08em", fontWeight: 600, fontFamily: T.mono }}>SIMILAR</span>;
+}
 
 function TabBar({ tabs, active, onChange, T }) {
   return (
-    <div style={{ display:"flex", borderBottom:`1px solid ${T.border}`, marginBottom:20 }}>
+    <div style={{ display: "flex", borderBottom: `1px solid ${T.border}`, marginBottom: 20 }}>
       {tabs.map(t => (
         <button key={t.id} onClick={() => onChange(t.id)} style={{
-          background:"none", border:"none", cursor:"pointer",
-          padding:"10px 18px", fontFamily:T.mono, fontSize:12,
-          letterSpacing:"0.06em", color: active===t.id ? T.accent : T.txtMuted,
-          borderBottom: active===t.id ? `2px solid ${T.accent}` : "2px solid transparent",
-          marginBottom:-1, transition:"color 0.15s",
+          background: "none", border: "none", cursor: "pointer",
+          padding: "10px 18px", fontFamily: T.mono, fontSize: 12,
+          letterSpacing: "0.06em",
+          color: active === t.id ? T.accent : T.txtMuted,
+          borderBottom: active === t.id ? `2px solid ${T.accent}` : "2px solid transparent",
+          marginBottom: -1, transition: "color 0.15s",
         }}>{t.label}</button>
       ))}
     </div>
   );
 }
 
-function Stat({ label, value, color, T }) {
+function ErrorBox({ msg, T }) {
+  if (!msg) return null;
   return (
-    <div style={{ background:T.bgCard, borderRadius:8, padding:"14px 16px", border:`1px solid ${T.border}` }}>
-      <div style={{ fontSize:22, fontWeight:600, color: color||T.txt, fontFamily:T.mono, letterSpacing:"-0.02em" }}>{value}</div>
-      <div style={{ fontSize:10, color:T.txtMuted, marginTop:3, letterSpacing:"0.06em", textTransform:"uppercase" }}>{label}</div>
-    </div>
+    <div style={{
+      marginTop: 10, padding: "10px 14px", borderRadius: 8,
+      border: `1px solid ${T.danger}`, background: "#2a1515",
+      color: T.danger, fontSize: 11, fontFamily: T.mono, lineHeight: 1.5,
+    }}>⚠ {msg}</div>
   );
 }
 
-function Badge({ type, similarity, T }) {
-  if (type === "exact") return (
-    <span style={{ fontSize:9, padding:"2px 7px", borderRadius:3, background:"#1a3a25", color:T.success, letterSpacing:"0.08em", fontWeight:600, fontFamily:T.mono }}>EXACT</span>
-  );
-  return (
-    <span style={{ fontSize:9, padding:"2px 7px", borderRadius:3, background:"#3a2a10", color:T.warn, letterSpacing:"0.08em", fontWeight:600, fontFamily:T.mono }}>
-      SIMILAR {similarity ? `${similarity}%` : ""}
-    </span>
-  );
-}
+// ─── SCANNER PANEL ────────────────────────────────────────────────────────────
+const LIMITS = [10, 20, 50, 100];
 
-function DupGroup({ group, T }) {
-  const [open, setOpen] = useState(true);
-  const [deleted, setDeleted] = useState({});
-
-  return (
-    <div style={{ border:`1px solid ${T.border}`, borderRadius:10, marginBottom:10, overflow:"hidden" }}>
-      {/* Group header */}
-      <div onClick={() => setOpen(o=>!o)} style={{
-        display:"flex", justifyContent:"space-between", alignItems:"center",
-        padding:"10px 14px", background:T.bgCard, cursor:"pointer",
-        borderBottom: open ? `1px solid ${T.border}` : "none",
-      }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <Badge type={group.type} similarity={group.similarity} T={T} />
-          <span style={{ fontSize:12, color:T.txt, fontFamily:T.mono }}>{group.files[0].name}</span>
-          <span style={{ fontSize:11, color:T.txtDim }}>{group.files.length} files</span>
-        </div>
-        <span style={{ color:T.txtDim, fontSize:12, transform: open?"":"rotate(-90deg)", transition:"0.2s" }}>▾</span>
-      </div>
-
-      {/* File rows */}
-      {open && (
-        <div style={{ padding:"10px 14px", display:"flex", flexDirection:"column", gap:6 }}>
-          {group.files.map((f, i) => (
-            <div key={f.path} style={{
-              display:"flex", justifyContent:"space-between", alignItems:"center",
-              padding:"8px 12px", borderRadius:7,
-              border:`1px solid ${i===0 ? T.accentDim : T.border}`,
-              opacity: deleted[f.path] ? 0.35 : 1,
-              transition:"opacity 0.2s",
-            }}>
-              <div>
-                <div style={{ fontSize:12, color:T.txt, fontFamily:T.mono, textDecoration: deleted[f.path]?"line-through":"none" }}>{f.name}</div>
-                <div style={{ fontSize:10, color:T.txtMuted, marginTop:2 }}>{f.path} · {f.size} · {f.date}</div>
-              </div>
-              <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                {i===0 && <span style={{ fontSize:10, color:T.accent, fontFamily:T.mono }}>keep</span>}
-                {i>0 && !deleted[f.path] && (
-                  <button onClick={() => setDeleted(d=>({...d,[f.path]:true}))} style={{
-                    fontSize:10, padding:"3px 9px", borderRadius:4, cursor:"pointer", fontFamily:T.mono,
-                    border:`1px solid ${T.danger}`, background:"transparent", color:T.danger,
-                  }}>delete</button>
-                )}
-                {deleted[f.path] && <span style={{ fontSize:10, color:T.txtDim, fontFamily:T.mono }}>marked</span>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Scanner Panel ────────────────────────────────────────────────────────────
-function ScannerPanel({ onScanDone, T }) {
-  const [folder, setFolder] = useState("/Users/A200173944/Pictures");
-  const [mode, setMode] = useState("both");
+function ScannerPanel({ onJobDone, T }) {
+  const [folder, setFolder]       = useState("/Users/A200173944/Pictures");
+  const [mode, setMode]           = useState("both");
   const [threshold, setThreshold] = useState(10);
   const [recursive, setRecursive] = useState(true);
-  const [scanning, setScanning] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [phase, setPhase] = useState("");
-  const [error, setError] = useState(null);
+  const [limit, setLimit]         = useState(100);
+  const [offset, setOffset]       = useState(0);
 
-const runScan = async () => {
-  setScanning(true);
-  setProgress(0);
-  setPhase("Starting scan...");
-  setError(null);
+  // Count state
+  const [countData, setCountData] = useState(null);   // { total, processed, unprocessed }
+  const [counting, setCounting]   = useState(false);
 
-  try {
-    // 1. start job
-    const startRes = await fetch("http://localhost:5000/scan/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ folder, mode, threshold, recursive }),
-    });
+  // Job state
+  const [jobId, setJobId]         = useState(null);
+  const [jobStatus, setJobStatus] = useState(null);   // full job object from /jobs/:id
+  const [scanning, setScanning]   = useState(false);
+  const [error, setError]         = useState(null);
 
-    const { job_id } = await startRes.json();
+  const pollRef = useRef(null);
 
-    // 2. poll progress
-    const interval = setInterval(async () => {
-      const res = await fetch(`http://localhost:5000/scan/status/${job_id}`);
-      const data = await res.json();
+  const totalPages = countData ? Math.ceil(countData.total / limit) : null;
 
-      if (data.progress !== undefined) {
-        setProgress(data.progress);
-      }
+  // ── Count ──
+  const countPhotos = useCallback(async () => {
+    if (!folder.trim()) return;
+    setCounting(true); setError(null);
+    try {
+      const data = await apiFetch("GET", `/photos/count?folder=${encodeURIComponent(folder)}&recursive=${recursive}`);
+      setCountData(data);
+      setOffset(0);
+    } catch (e) { setError(e.message); }
+    finally { setCounting(false); }
+  }, [folder, recursive]);
 
-      if (data.status === "done") {
-        clearInterval(interval);
+  // Auto-count when folder changes (debounced)
+  useEffect(() => {
+    const t = setTimeout(() => { if (folder.trim()) countPhotos(); }, 600);
+    return () => clearTimeout(t);
+  }, [folder, recursive]);
+
+  // ── Scan ──
+  const runScan = async () => {
+    if (!folder.trim()) return;
+    setScanning(true); setError(null); setJobId(null); setJobStatus(null);
+    try {
+      const data = await apiFetch("POST", "/scan/start", {
+        folder, mode, threshold, recursive, offset, limit,
+      });
+      const jid = data.job_id;
+      setJobId(jid);
+      startPolling(jid);
+    } catch (e) {
+      setError(e.message); setScanning(false);
+    }
+  };
+
+  const startPolling = (jid) => {
+    clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const job = await apiFetch("GET", `/jobs/${jid}`);
+        setJobStatus(job);
+        if (job.status === "done" || job.status === "error") {
+          clearInterval(pollRef.current);
+          setScanning(false);
+          if (job.status === "done") {
+            const report = await apiFetch("GET", `/jobs/${jid}/report`);
+            onJobDone(report, jid);
+          } else {
+            setError(job.error || "Scan failed");
+          }
+        }
+      } catch (e) {
+        clearInterval(pollRef.current);
         setScanning(false);
-
-        const resultRes = await fetch(`http://localhost:5000/scan/result/${job_id}`);
-        const result = await resultRes.json();
-
-        onScanDone(result.groups);
+        setError(e.message);
       }
+    }, 800);
+  };
 
-      if (data.status === "error") {
-        clearInterval(interval);
-        setScanning(false);
-        setError(data.error);
-      }
-    }, 500);
+  useEffect(() => () => clearInterval(pollRef.current), []);
 
-  } catch (e) {
-    setScanning(false);
-    setError(e.message);
-  }
-};
+  const progress = jobStatus
+    ? Math.round((jobStatus.processedPhotos / Math.max(1, jobStatus.batchPhotos)) * 100)
+    : 0;
 
-  const modes = [
-    { id:"exact",      label:"Exact",      desc:"SHA-256 · byte-identical only" },
-    { id:"perceptual", label:"Perceptual", desc:"pHash · visually similar" },
-    { id:"both",       label:"Both",       desc:"Most thorough scan" },
+  const phaseLabel = jobStatus
+    ? { pending: "Queued…", processing: `Processing ${jobStatus.processedPhotos}/${jobStatus.batchPhotos}`, done: "Done", error: "Error" }[jobStatus.status] || ""
+    : "Starting…";
+
+  const MODES = [
+    { id: "exact",      label: "Exact",      desc: "SHA-256 · byte-identical" },
+    { id: "perceptual", label: "Perceptual", desc: "pHash · visually similar" },
+    { id: "both",       label: "Both",       desc: "Most thorough" },
   ];
 
   return (
     <div>
       {/* Folder */}
-      <div style={{ marginBottom:18 }}>
-        <label style={{ fontSize:11, color:T.txtMuted, letterSpacing:"0.07em", textTransform:"uppercase", display:"block", marginBottom:6 }}>Folder Path</label>
-        <input value={folder} onChange={e=>setFolder(e.target.value)} style={{
-          width:"100%", fontFamily:T.mono, fontSize:13, padding:"10px 14px",
-          background:T.bgInput, border:`1px solid ${T.border}`, borderRadius:8,
-          color:T.txt, outline:"none",
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ fontSize: 11, color: T.txtMuted, letterSpacing: "0.07em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Folder Path</label>
+        <input value={folder} onChange={e => setFolder(e.target.value)} style={{
+          width: "100%", fontFamily: T.mono, fontSize: 13, padding: "10px 14px",
+          background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 8,
+          color: T.txt, outline: "none",
         }} placeholder="/home/user/Pictures" />
       </div>
 
+      {/* Photo count strip */}
+      {countData && (
+        <div style={{
+          display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginBottom: 16,
+          padding: "12px 14px", background: T.bgCard, borderRadius: 8, border: `1px solid ${T.border}`,
+        }}>
+          {[
+            ["Total", countData.total, T.txt],
+            ["Processed", countData.processed, T.success],
+            ["Remaining", countData.unprocessed, T.accent],
+          ].map(([l, v, c]) => (
+            <div key={l} style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: c, fontFamily: T.mono }}>{v.toLocaleString()}</div>
+              <div style={{ fontSize: 10, color: T.txtMuted, letterSpacing: "0.06em", textTransform: "uppercase" }}>{l}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {counting && <div style={{ fontSize: 11, color: T.txtMuted, fontFamily: T.mono, marginBottom: 12 }}>Counting…</div>}
+
       {/* Mode */}
-      <div style={{ marginBottom:18 }}>
-        <label style={{ fontSize:11, color:T.txtMuted, letterSpacing:"0.07em", textTransform:"uppercase", display:"block", marginBottom:6 }}>Detection Mode</label>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
-          {modes.map(m => (
-            <div key={m.id} onClick={()=>setMode(m.id)} style={{
-              padding:"11px 12px", borderRadius:8, cursor:"pointer",
-              border:`1px solid ${mode===m.id ? T.accent : T.border}`,
-              background: mode===m.id ? T.selectedBg : T.bgCard,
-              transition:"all 0.15s",
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ fontSize: 11, color: T.txtMuted, letterSpacing: "0.07em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Detection Mode</label>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+          {MODES.map(m => (
+            <div key={m.id} onClick={() => setMode(m.id)} style={{
+              padding: "10px 12px", borderRadius: 8, cursor: "pointer",
+              border: `1px solid ${mode === m.id ? T.accent : T.border}`,
+              background: mode === m.id ? T.selectedBg : T.bgCard, transition: "all 0.15s",
             }}>
-              <div style={{ fontSize:12, fontWeight:600, color:T.txt, marginBottom:3 }}>{m.label}</div>
-              <div style={{ fontSize:10, color:T.txtMuted, lineHeight:1.4 }}>{m.desc}</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: T.txt, marginBottom: 2 }}>{m.label}</div>
+              <div style={{ fontSize: 10, color: T.txtMuted }}>{m.desc}</div>
             </div>
           ))}
         </div>
@@ -280,469 +259,539 @@ const runScan = async () => {
 
       {/* Threshold */}
       {mode !== "exact" && (
-        <div style={{ marginBottom:18 }}>
-          <label style={{ fontSize:11, color:T.txtMuted, letterSpacing:"0.07em", textTransform:"uppercase", display:"block", marginBottom:6 }}>
-            Similarity Threshold — <span style={{ color:T.accent }}>{threshold}</span>
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: 11, color: T.txtMuted, letterSpacing: "0.07em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>
+            Similarity Threshold — <span style={{ color: T.accent }}>{threshold}</span>
           </label>
           <input type="range" min={0} max={64} step={1} value={threshold}
-            onChange={e=>setThreshold(+e.target.value)}
-            style={{ width:"100%", accentColor:T.accent }} />
-          <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:T.txtDim, marginTop:4 }}>
-            <span>0 — identical</span><span>10 — near-dup</span><span>30+ — loose</span>
+            onChange={e => setThreshold(+e.target.value)}
+            style={{ width: "100%", accentColor: T.accent }} />
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: T.txtDim, marginTop: 4 }}>
+            <span>0 identical</span><span>10 near-dup</span><span>30+ loose</span>
           </div>
         </div>
       )}
 
-      {/* Options */}
-      <div style={{ marginBottom:24 }}>
-        <label style={{ fontSize:11, color:T.txtMuted, letterSpacing:"0.07em", textTransform:"uppercase", display:"block", marginBottom:8 }}>Options</label>
-        {[["recursive", recursive, setRecursive, "Scan subfolders recursively"],
-          ].map(([key, val, setter, lbl]) => (
-          <label key={key} style={{ display:"flex", alignItems:"center", gap:10, fontSize:12, color:T.txtMuted, cursor:"pointer", marginBottom:8 }}>
-            <input type="checkbox" checked={val} onChange={e=>setter(e.target.checked)} style={{ accentColor:T.accent }} />
-            {lbl}
-          </label>
-        ))}
+      {/* Batch size + pagination */}
+      <div style={{ marginBottom: 20 }}>
+        <label style={{ fontSize: 11, color: T.txtMuted, letterSpacing: "0.07em", textTransform: "uppercase", display: "block", marginBottom: 8 }}>
+          Batch Size &amp; Page
+        </label>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {/* Limit chips */}
+          <div style={{ display: "flex", gap: 4 }}>
+            {LIMITS.map(l => (
+              <button key={l} onClick={() => { setLimit(l); setOffset(0); }} style={{
+                padding: "5px 12px", borderRadius: 6, cursor: "pointer", fontFamily: T.mono, fontSize: 11,
+                border: `1px solid ${limit === l ? T.accent : T.border}`,
+                background: limit === l ? T.selectedBg : T.bgCard,
+                color: limit === l ? T.accent : T.txtMuted,
+              }}>{l}</button>
+            ))}
+          </div>
+
+          {/* Page controls */}
+          {countData && totalPages > 1 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
+              <button onClick={() => setOffset(o => Math.max(0, o - 1))} disabled={offset === 0}
+                style={{ padding: "4px 10px", borderRadius: 5, border: `1px solid ${T.border}`, background: T.bgCard, color: T.txtMuted, cursor: "pointer", fontSize: 12, fontFamily: T.mono, opacity: offset === 0 ? 0.4 : 1 }}>‹</button>
+              <span style={{ fontSize: 11, color: T.txtMuted, fontFamily: T.mono, minWidth: 80, textAlign: "center" }}>
+                Page {offset + 1} / {totalPages}
+              </span>
+              <button onClick={() => setOffset(o => Math.min(totalPages - 1, o + 1))} disabled={offset >= totalPages - 1}
+                style={{ padding: "4px 10px", borderRadius: 5, border: `1px solid ${T.border}`, background: T.bgCard, color: T.txtMuted, cursor: "pointer", fontSize: 12, fontFamily: T.mono, opacity: offset >= totalPages - 1 ? 0.4 : 1 }}>›</button>
+            </div>
+          )}
+        </div>
+
+        {/* Batch info line */}
+        {countData && (
+          <div style={{ fontSize: 10, color: T.txtDim, fontFamily: T.mono, marginTop: 6 }}>
+            Processing photos {(offset * limit + 1).toLocaleString()}–{Math.min((offset + 1) * limit, countData.total).toLocaleString()} of {countData.total.toLocaleString()}
+          </div>
+        )}
       </div>
+
+      {/* Recursive */}
+      <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: T.txtMuted, cursor: "pointer", marginBottom: 20 }}>
+        <input type="checkbox" checked={recursive} onChange={e => setRecursive(e.target.checked)} style={{ accentColor: T.accent }} />
+        Scan subfolders recursively
+      </label>
 
       {/* Run button */}
       <button onClick={runScan} disabled={scanning} style={{
-        width:"100%", padding:"12px", fontFamily:T.mono, fontSize:12, letterSpacing:"0.1em",
-        borderRadius:9, border:"none", cursor: scanning?"not-allowed":"pointer",
-        background: scanning ? T.accentDim : T.accent,
-        color:"#fff", fontWeight:600, transition:"background 0.2s",
+        width: "100%", padding: "12px", fontFamily: T.mono, fontSize: 12, letterSpacing: "0.1em",
+        borderRadius: 9, border: "none", cursor: scanning ? "not-allowed" : "pointer",
+        background: scanning ? T.accentDim : T.accent, color: "#fff", fontWeight: 600,
       }}>
-        {scanning ? `${phase}  ${progress}%` : "▶  RUN SCAN"}
+        {scanning ? `${phaseLabel}` : "▶  RUN SCAN"}
       </button>
-      {error && (
-  <div style={{
-    marginTop: 12,
-    padding: "10px 12px",
-    borderRadius: 8,
-    border: `1px solid ${T.danger}`,
-    background: "#2a1515",
-    color: T.danger,
-    fontSize: 11,
-    fontFamily: T.mono,
-    whiteSpace: "pre-wrap"
-  }}>
-    ⚠ {error}
-  </div>
-)}
-      {/* Progress bar */}
+
+      {/* Progress */}
       {scanning && (
-        <div style={{ height:3, background:T.border, borderRadius:2, marginTop:12, overflow:"hidden" }}>
-          <div style={{ height:"100%", width:`${progress}%`, background:T.accent, borderRadius:2, transition:"width 0.15s" }} />
+        <div style={{ marginTop: 10 }}>
+          <div style={{ height: 4, background: T.border, borderRadius: 2, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${progress}%`, background: T.accent, borderRadius: 2, transition: "width 0.3s" }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5, fontSize: 10, color: T.txtMuted, fontFamily: T.mono }}>
+            <span>{jobId ? `Job: ${jobId.slice(0, 16)}…` : ""}</span>
+            <span>{progress}%</span>
+          </div>
         </div>
       )}
+
+      <ErrorBox msg={error} T={T} />
     </div>
   );
 }
 
-// ─── Results Panel ────────────────────────────────────────────────────────────
-function ResultsPanel({ groups, T }) {
-  const [filter, setFilter] = useState("all");
-  if (!groups) return (
-    <div style={{ textAlign:"center", padding:"4rem 1rem", color:T.txtDim, fontFamily:T.mono, fontSize:13 }}>
-      <div style={{ fontSize:36, marginBottom:12, opacity:0.3 }}>◈</div>
+// ─── RESULTS PANEL ────────────────────────────────────────────────────────────
+function ResultsPanel({ report, jobId, T }) {
+  const [filter, setFilter]           = useState("all");
+  const [markedDelete, setMarkedDelete] = useState({});   // { fileId: true }
+  const [deletingId, setDeletingId]   = useState(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [toast, setToast]             = useState(null);
+
+  const showToast = (msg, ok = true) => {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  if (!report) return (
+    <div style={{ textAlign: "center", padding: "4rem 1rem", color: T.txtDim, fontFamily: T.mono, fontSize: 13 }}>
+      <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.3 }}>◈</div>
       Run a scan first to see duplicate groups.
     </div>
   );
 
-  const exact = groups.filter(g=>g.type==="exact");
-  const similar = groups.filter(g=>g.type==="similar");
-  const allFiles = groups.reduce((a,g)=>a+g.files.length,0);
-  const reclaimMB = exact.reduce((a,g)=>a+(g.files.length-1)*3.1,0).toFixed(1);
+  const { summary, exactGroups = [], similarGroups = [] } = report;
+  const allGroups = [
+    ...exactGroups.map(g => ({ ...g, type: "exact" })),
+    ...similarGroups.map(g => ({ ...g, type: "similar" })),
+  ];
 
-  const visible = filter==="all" ? groups : groups.filter(g=>g.type===(filter==="exact"?"exact":"similar"));
+  const visible = filter === "all" ? allGroups
+    : allGroups.filter(g => g.type === filter);
+
+  // Flatten all non-primary files across visible groups
+  const allDeletableFiles = visible.flatMap(g =>
+    g.files.slice(1).map(f => ({ ...f, groupType: g.type }))
+  );
+  const markedCount = Object.values(markedDelete).filter(Boolean).length;
+
+  const toggleMark = (fileId) => {
+    setMarkedDelete(prev => ({ ...prev, [fileId]: !prev[fileId] }));
+  };
+
+  const markAllVisible = () => {
+    const upd = { ...markedDelete };
+    allDeletableFiles.forEach(f => { upd[f.id] = true; });
+    setMarkedDelete(upd);
+  };
+
+  const clearMarks = () => setMarkedDelete({});
+
+  const deleteFile = async (fileId) => {
+    setDeletingId(fileId);
+    try {
+      await apiFetch("POST", `/jobs/${jobId}/mark-delete`, { file_ids: [fileId] });
+      await apiFetch("POST", `/jobs/${jobId}/delete`, { file_ids: [fileId] });
+      setMarkedDelete(prev => ({ ...prev, [fileId]: "done" }));
+      showToast(`Moved to ToBeDeleted/`);
+    } catch (e) { showToast(e.message, false); }
+    finally { setDeletingId(null); }
+  };
+
+  const deleteMarked = async () => {
+    const ids = Object.entries(markedDelete).filter(([, v]) => v === true).map(([k]) => k);
+    if (!ids.length) return;
+    setBulkLoading(true);
+    try {
+      await apiFetch("POST", `/jobs/${jobId}/mark-delete`, { file_ids: ids });
+      await apiFetch("POST", `/jobs/${jobId}/delete`, { file_ids: ids });
+      const upd = { ...markedDelete };
+      ids.forEach(id => { upd[id] = "done"; });
+      setMarkedDelete(upd);
+      showToast(`Moved ${ids.length} file(s) to ToBeDeleted/`);
+    } catch (e) { showToast(e.message, false); }
+    finally { setBulkLoading(false); }
+  };
 
   return (
     <div>
-      {/* Stats */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8, marginBottom:20 }}>
-        <Stat label="Images flagged" value={allFiles} T={T} />
-        <Stat label="Exact groups"   value={exact.length}   color={T.success} T={T} />
-        <Stat label="Similar groups" value={similar.length} color={T.warn} T={T} />
-        <Stat label="Est. savings"   value={`${reclaimMB} MB`} color={T.accent} T={T} />
+      {/* Toast */}
+      {toast && (
+        <div style={{
+          position: "fixed", top: 20, right: 20, zIndex: 999,
+          padding: "10px 16px", borderRadius: 8,
+          background: toast.ok ? "#1a3a25" : "#2a1515",
+          border: `1px solid ${toast.ok ? T.success : T.danger}`,
+          color: toast.ok ? T.success : T.danger,
+          fontSize: 12, fontFamily: T.mono,
+        }}>{toast.ok ? "✓" : "✗"} {toast.msg}</div>
+      )}
+
+      {/* Summary stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginBottom: 18 }}>
+        <Stat label="Exact groups"    value={summary.exactGroups}         color={T.success} T={T} />
+        <Stat label="Similar groups"  value={summary.similarGroups}       color={T.warn}    T={T} />
+        <Stat label="Can reclaim"     value={summary.reclaimableHuman}    color={T.accent}  T={T} />
+        <Stat label="Total flagged"   value={summary.exactFiles + summary.similarFiles} T={T} />
       </div>
 
-      {/* Filter */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-        <span style={{ fontSize:12, color:T.txtMuted }}>{visible.length} group{visible.length!==1?"s":""}</span>
-        <div style={{ display:"flex", gap:6 }}>
-          {["all","exact","similar"].map(f => (
-            <button key={f} onClick={()=>setFilter(f)} style={{
-              fontSize:10, padding:"4px 10px", borderRadius:4, cursor:"pointer",
-              fontFamily:T.mono, letterSpacing:"0.05em",
-              border:`1px solid ${filter===f ? T.accent : T.border}`,
-              background: filter===f ? "#1e1a38" : "transparent",
-              color: filter===f ? T.accent : T.txtMuted,
-            }}>{f}</button>
+      {/* Controls */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+        {/* Filter pills */}
+        <div style={{ display: "flex", gap: 6 }}>
+          {["all", "exact", "similar"].map(f => (
+            <button key={f} onClick={() => setFilter(f)} style={{
+              fontSize: 10, padding: "4px 12px", borderRadius: 20, cursor: "pointer",
+              fontFamily: T.mono, letterSpacing: "0.05em",
+              border: `1px solid ${filter === f ? T.accent : T.border}`,
+              background: filter === f ? T.selectedBg : "transparent",
+              color: filter === f ? T.accent : T.txtMuted,
+            }}>{f} {f === "all" ? `(${allGroups.length})` : f === "exact" ? `(${exactGroups.length})` : `(${similarGroups.length})`}</button>
           ))}
+        </div>
+
+        {/* Bulk actions */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {markedCount > 0 && (
+            <span style={{ fontSize: 11, color: T.txtMuted, fontFamily: T.mono }}>{markedCount} marked</span>
+          )}
+          <button onClick={markAllVisible} style={{
+            padding: "5px 12px", borderRadius: 6, cursor: "pointer", fontFamily: T.mono, fontSize: 10,
+            border: `1px solid ${T.border}`, background: T.bgCard, color: T.txtMuted,
+          }}>Mark all dupes</button>
+          {markedCount > 0 && <>
+            <button onClick={clearMarks} style={{
+              padding: "5px 12px", borderRadius: 6, cursor: "pointer", fontFamily: T.mono, fontSize: 10,
+              border: `1px solid ${T.border}`, background: T.bgCard, color: T.txtMuted,
+            }}>Clear</button>
+            <button onClick={deleteMarked} disabled={bulkLoading} style={{
+              padding: "5px 14px", borderRadius: 6, cursor: "pointer", fontFamily: T.mono, fontSize: 10,
+              border: `1px solid ${T.danger}`, background: "#2a1515", color: T.danger,
+              fontWeight: 600,
+            }}>{bulkLoading ? "Moving…" : `Move ${markedCount} to Trash`}</button>
+          </>}
         </div>
       </div>
 
-      {/* Groups */}
-      {visible.map(g => <DupGroup key={g.id} group={g} T={T} />)}
+      {/* Table */}
+      {visible.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "3rem", color: T.txtDim, fontFamily: T.mono, fontSize: 13 }}>
+          No groups match this filter.
+        </div>
+      ) : (
+        <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, overflow: "hidden" }}>
+          {/* Table header */}
+          <div style={{
+            display: "grid", gridTemplateColumns: "80px 1fr 2fr 70px 90px 90px",
+            padding: "9px 14px", background: T.bgCard,
+            borderBottom: `1px solid ${T.border}`,
+            fontSize: 10, color: T.txtDim, letterSpacing: "0.07em", textTransform: "uppercase",
+            fontFamily: T.mono,
+          }}>
+            <span>Type</span>
+            <span>File</span>
+            <span>Path</span>
+            <span>Size</span>
+            <span>Date</span>
+            <span style={{ textAlign: "right" }}>Action</span>
+          </div>
+
+          {/* Group rows */}
+          {visible.map((group, gi) => (
+            <GroupTableRows
+              key={gi} group={group} gi={gi}
+              markedDelete={markedDelete} deletingId={deletingId}
+              toggleMark={toggleMark} deleteFile={deleteFile}
+              T={T}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-// ─── AI Chat Panel ────────────────────────────────────────────────────────────
-function ChatPanel({T}) {
-  const [messages, setMessages] = useState([
-    { role:"assistant", content:"Hi! I'm **Iris**, your photography & photo library assistant.\n\nAsk me anything — folder organisation, duplicate culling strategy, RAW vs JPEG, backup workflows, or camera technique. All suggestions are tailored for offline, privacy-first setups." }
-  ]);
-  const [input, setInput] = useState("");
+function GroupTableRows({ group, gi, markedDelete, deletingId, toggleMark, deleteFile, T }) {
+  const [expanded, setExpanded] = useState(true);
+
+  return (
+    <>
+      {/* Group separator row */}
+      <div onClick={() => setExpanded(e => !e)} style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "7px 14px",
+        background: gi % 2 === 0 ? T.tableBg : T.tableAlt,
+        borderTop: gi > 0 ? `1px solid ${T.border}` : "none",
+        cursor: "pointer",
+        borderBottom: `1px solid ${T.border}`,
+      }}>
+        <span style={{ fontSize: 10, color: T.txtDim, fontFamily: T.mono, transform: expanded ? "" : "rotate(-90deg)", transition: "0.15s" }}>▾</span>
+        <Badge type={group.type} T={T} />
+        <span style={{ fontSize: 11, color: T.txt, fontFamily: T.mono }}>{group.files[0]?.name}</span>
+        <span style={{ fontSize: 10, color: T.txtDim, marginLeft: 4 }}>{group.files.length} files</span>
+        {group.hash_sha256 && (
+          <span style={{ fontSize: 9, color: T.txtDim, fontFamily: T.mono, marginLeft: 8 }}>
+            {group.hash_sha256.slice(0, 18)}…
+          </span>
+        )}
+      </div>
+
+      {/* File rows */}
+      {expanded && group.files.map((file, fi) => {
+        const isKeep    = fi === 0;
+        const isDone    = markedDelete[file.id] === "done";
+        const isMarked  = markedDelete[file.id] === true;
+        const isDeleting= deletingId === file.id;
+
+        return (
+          <div key={file.id || fi} style={{
+            display: "grid", gridTemplateColumns: "80px 1fr 2fr 70px 90px 90px",
+            padding: "8px 14px", alignItems: "center",
+            background: isDone ? "#1a2a1a" : isMarked ? "#2a1e1e" : (gi % 2 === 0 ? T.tableBg : T.tableAlt),
+            borderBottom: `1px solid ${T.border}`,
+            opacity: isDone ? 0.5 : 1,
+            transition: "background 0.2s",
+          }}>
+            {/* Type */}
+            <span style={{ fontSize: 10, color: isKeep ? T.accent : T.txtDim, fontFamily: T.mono }}>
+              {isKeep ? "● keep" : "○ dupe"}
+            </span>
+
+            {/* File name */}
+            <span style={{
+              fontSize: 11, color: isDone ? T.txtDim : T.txt, fontFamily: T.mono,
+              textDecoration: isDone ? "line-through" : "none",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>{file.name}</span>
+
+            {/* Path */}
+            <span style={{
+              fontSize: 10, color: T.txtDim, fontFamily: T.mono,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }} title={file.path}>{file.path}</span>
+
+            {/* Size */}
+            <span style={{ fontSize: 11, color: T.txtMuted, fontFamily: T.mono }}>{file.size}</span>
+
+            {/* Date */}
+            <span style={{ fontSize: 11, color: T.txtMuted, fontFamily: T.mono }}>{file.date}</span>
+
+            {/* Action */}
+            <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", alignItems: "center" }}>
+              {isKeep ? (
+                <span style={{ fontSize: 10, color: T.accent, fontFamily: T.mono }}>keep</span>
+              ) : isDone ? (
+                <span style={{ fontSize: 10, color: T.success, fontFamily: T.mono }}>✓ moved</span>
+              ) : (
+                <>
+                  {/* Checkbox */}
+                  <input type="checkbox" checked={isMarked} onChange={() => toggleMark(file.id)}
+                    style={{ accentColor: T.danger, cursor: "pointer" }} />
+                  {/* Delete button */}
+                  <button
+                    onClick={() => deleteFile(file.id)}
+                    disabled={isDeleting}
+                    style={{
+                      fontSize: 10, padding: "3px 8px", borderRadius: 4, cursor: "pointer",
+                      fontFamily: T.mono, border: `1px solid ${T.danger}`,
+                      background: "transparent", color: T.danger,
+                      opacity: isDeleting ? 0.5 : 1,
+                    }}>
+                    {isDeleting ? "…" : "trash"}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+// ─── AI CHAT PANEL ────────────────────────────────────────────────────────────
+function ChatPanel({ T }) {
+  const [messages, setMessages] = useState([{
+    role: "assistant",
+    content: "Hi! I'm **Iris**, your photography & photo library assistant.\n\nAsk me anything — folder organisation, duplicate culling strategy, RAW vs JPEG, backup workflows, or camera technique.",
+  }]);
+  const [input, setInput]   = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError]   = useState(null);
   const bottomRef = useRef(null);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages, loading]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
 
   const send = async (text) => {
     const q = (text || input).trim();
     if (!q || loading) return;
-    setInput("");
-    setError(null);
-    const newMessages = [...messages, { role:"user", content:q }];
-    setMessages(newMessages);
+    setInput(""); setError(null);
+    const next = [...messages, { role: "user", content: q }];
+    setMessages(next);
     setLoading(true);
     try {
-      const apiMessages = newMessages.map(m => ({ role:m.role, content:m.content }));
-      const reply = await askIris(apiMessages);
-      setMessages(prev => [...prev, { role:"assistant", content:reply }]);
-    } catch(e) {
-      setError("Could not reach the AI. Check your connection.");
-    } finally {
-      setLoading(false);
-    }
+      const reply = await askIris(next.map(m => ({ role: m.role, content: m.content })));
+      setMessages(p => [...p, { role: "assistant", content: reply }]);
+    } catch (e) { setError("Could not reach Ollama. Is it running?"); }
+    finally { setLoading(false); }
   };
 
-  const renderContent = (text) => {
-    // Basic markdown: **bold**, bullet points, line breaks
-    return text
-      .replace(/\*\*(.*?)\*\*/g, `<strong style="color:${T.txt};font-weight:600">$1</strong>`)
-      .replace(/^- (.+)/gm, `<div style="display:flex;gap:8px;margin:3px 0"><span style="color:${T.accent};flex-shrink:0">▸</span><span>$1</span></div>`)
-      .replace(/\n/g, "<br/>");
-  };
+  const renderMd = (text) => text
+    .replace(/\*\*(.*?)\*\*/g, `<strong style="color:${T.txt};font-weight:600">$1</strong>`)
+    .replace(/^- (.+)/gm, `<div style="display:flex;gap:8px;margin:2px 0"><span style="color:${T.accent}">▸</span><span>$1</span></div>`)
+    .replace(/\n/g, "<br/>");
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", height:520 }}>
-      {/* Messages */}
-      <div style={{ flex:1, overflowY:"auto", paddingBottom:12, display:"flex", flexDirection:"column", gap:14 }}>
+    <div style={{ display: "flex", flexDirection: "column", height: 520 }}>
+      <div style={{ flex: 1, overflowY: "auto", paddingBottom: 12, display: "flex", flexDirection: "column", gap: 12 }}>
         {messages.map((m, i) => (
-          <div key={i} style={{ display:"flex", gap:10, flexDirection: m.role==="user" ? "row-reverse" : "row" }}>
-            {/* Avatar */}
+          <div key={i} style={{ display: "flex", gap: 10, flexDirection: m.role === "user" ? "row-reverse" : "row" }}>
             <div style={{
-              width:30, height:30, borderRadius:"50%", flexShrink:0,
-              background: m.role==="assistant" ? T.accentDim : T.bgCard,
-              border:`1px solid ${m.role==="assistant" ? T.accent : T.border}`,
-              display:"flex", alignItems:"center", justifyContent:"center",
-              fontSize:11, fontFamily:T.mono, color: m.role==="assistant" ? T.accent : T.txtMuted,
-            }}>
-              {m.role==="assistant" ? "◈" : "U"}
-            </div>
-            {/* Bubble */}
+              width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+              background: m.role === "assistant" ? T.accentDim : T.bgCard,
+              border: `1px solid ${m.role === "assistant" ? T.accent : T.border}`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 11, fontFamily: T.mono, color: m.role === "assistant" ? T.accent : T.txtMuted,
+            }}>{m.role === "assistant" ? "◈" : "U"}</div>
             <div style={{
-              maxWidth:"82%", padding:"10px 14px", borderRadius: m.role==="user" ? "12px 4px 12px 12px" : "4px 12px 12px 12px",
-              background: m.role==="user" ? "#1e1a38" : T.bgCard,
-              border:`1px solid ${m.role==="user" ? T.accentDim : T.border}`,
-              fontSize:13, color:T.txtMuted, lineHeight:1.65, fontFamily:T.sans,
-            }}
-              dangerouslySetInnerHTML={{ __html: renderContent(m.content) }}
-            />
+              maxWidth: "82%", padding: "10px 14px",
+              borderRadius: m.role === "user" ? "12px 4px 12px 12px" : "4px 12px 12px 12px",
+              background: m.role === "user" ? T.selectedBg : T.bgCard,
+              border: `1px solid ${m.role === "user" ? T.accentDim : T.border}`,
+              fontSize: 13, color: T.txtMuted, lineHeight: 1.65, fontFamily: T.sans,
+            }} dangerouslySetInnerHTML={{ __html: renderMd(m.content) }} />
           </div>
         ))}
-
-        {/* Typing indicator */}
         {loading && (
-          <div style={{ display:"flex", gap:10 }}>
-            <div style={{ width:30, height:30, borderRadius:"50%", background:T.accentDim, border:`1px solid ${T.accent}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontFamily:T.mono, color:T.accent, flexShrink:0 }}>◈</div>
-            <div style={{ padding:"12px 16px", background:T.bgCard, border:`1px solid ${T.border}`, borderRadius:"4px 12px 12px 12px" }}>
-              <div style={{ display:"flex", gap:5 }}>
-                {[0,1,2].map(i=>(
-                  <div key={i} style={{
-                    width:6, height:6, borderRadius:"50%", background:T.accent,
-                    animation:`bounce 1.2s ease-in-out ${i*0.2}s infinite`,
-                  }}/>
-                ))}
-              </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ width: 28, height: 28, borderRadius: "50%", background: T.accentDim, border: `1px solid ${T.accent}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: T.accent }}>◈</div>
+            <div style={{ padding: "12px 16px", background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: "4px 12px 12px 12px", display: "flex", gap: 5, alignItems: "center" }}>
+              {[0, 1, 2].map(i => <div key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: T.accent, animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite` }} />)}
             </div>
           </div>
         )}
-        {error && <div style={{ fontSize:12, color:T.danger, textAlign:"center", fontFamily:T.mono }}>{error}</div>}
-        <div ref={bottomRef}/>
+        {error && <div style={{ fontSize: 11, color: T.danger, textAlign: "center", fontFamily: T.mono }}>{error}</div>}
+        <div ref={bottomRef} />
       </div>
 
-      {/* Suggestions (show when only 1 message) */}
       {messages.length === 1 && (
-        <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:12 }}>
-          {SUGGESTIONS.slice(0,4).map((s,i) => (
-            <button key={i} onClick={()=>send(s)} style={{
-              fontSize:11, padding:"5px 10px", borderRadius:6, cursor:"pointer",
-              border:`1px solid ${T.border}`, background:T.bgCard,
-              color:T.txtMuted, fontFamily:T.sans, lineHeight:1.3, textAlign:"left",
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+          {SUGGESTIONS.map((s, i) => (
+            <button key={i} onClick={() => send(s)} style={{
+              fontSize: 11, padding: "5px 10px", borderRadius: 6, cursor: "pointer",
+              border: `1px solid ${T.border}`, background: T.bgCard,
+              color: T.txtMuted, fontFamily: T.sans, lineHeight: 1.3, textAlign: "left",
             }}>{s}</button>
           ))}
         </div>
       )}
 
-      {/* Input row */}
-      <div style={{ display:"flex", gap:8 }}>
-        <input
-          value={input}
-          onChange={e=>setInput(e.target.value)}
-          onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&send()}
+      <div style={{ display: "flex", gap: 8 }}>
+        <input value={input} onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && !e.shiftKey && send()}
           placeholder="Ask Iris about photography or photo organisation…"
           disabled={loading}
           style={{
-            flex:1, fontFamily:T.sans, fontSize:13, padding:"11px 14px",
-            background:T.bgInput, border:`1px solid ${T.border}`,
-            borderRadius:9, color:T.txt, outline:"none",
-          }}
-        />
-        <button onClick={()=>send()} disabled={loading||!input.trim()} style={{
-          padding:"11px 18px", borderRadius:9, border:"none", cursor:"pointer",
-          background: (loading||!input.trim()) ? T.accentDim : T.accent,
-          color:"#fff", fontFamily:T.mono, fontSize:12, fontWeight:600,
-          letterSpacing:"0.06em",
+            flex: 1, fontFamily: T.sans, fontSize: 13, padding: "11px 14px",
+            background: T.bgInput, border: `1px solid ${T.border}`,
+            borderRadius: 9, color: T.txt, outline: "none",
+          }} />
+        <button onClick={() => send()} disabled={loading || !input.trim()} style={{
+          padding: "11px 18px", borderRadius: 9, border: "none", cursor: "pointer",
+          background: (loading || !input.trim()) ? T.accentDim : T.accent,
+          color: "#fff", fontFamily: T.mono, fontSize: 12, fontWeight: 600,
         }}>Send</button>
       </div>
     </div>
   );
 }
 
-// ─── Script Panel ─────────────────────────────────────────────────────────────
-const PYTHON_SCRIPT = `#!/usr/bin/env python3
-"""
-DupeScope — Privacy-First Duplicate Photo Detector
-Requires: pip install Pillow imagehash
+// ─── SCRIPT PANEL (unchanged) ─────────────────────────────────────────────────
+const PYTHON_SCRIPT = `# dupescope.py — see your project folder`;
 
-Usage:
-  python dupescope.py ~/Pictures
-  python dupescope.py ~/Pictures --mode perceptual --threshold 15
-"""
-import os, hashlib, json, argparse, sys
-from pathlib import Path
-from collections import defaultdict
-
-try:
-    from PIL import Image
-    import imagehash
-    PERCEPTUAL = True
-except ImportError:
-    PERCEPTUAL = False
-    print("[!] pip install Pillow imagehash")
-
-EXTS = {'.jpg','.jpeg','.png','.gif','.bmp','.webp','.tiff','.heic','.avif'}
-
-def sha256(path):
-    h = hashlib.sha256()
-    with open(path,'rb') as f:
-        for chunk in iter(lambda: f.read(65536), b''):
-            h.update(chunk)
-    return h.hexdigest()
-
-def scan_images(folder, recursive=True):
-    images = []
-    walk = os.walk(folder) if recursive else [(folder,[],os.listdir(folder))]
-    for root,_,files in walk:
-        for f in files:
-            if Path(f).suffix.lower() in EXTS:
-                images.append(Path(root)/f)
-    return sorted(images)
-
-def find_exact(images):
-    hmap = defaultdict(list)
-    for i,p in enumerate(images):
-        sys.stdout.write(f"\\r  [exact] {i+1}/{len(images)} {p.name[:40]}")
-        try: hmap[sha256(p)].append(p)
-        except: pass
-    print()
-    return {h:ps for h,ps in hmap.items() if len(ps)>1}
-
-def find_perceptual(images, threshold=10):
-    if not PERCEPTUAL: return []
-    ph = []
-    for i,p in enumerate(images):
-        sys.stdout.write(f"\\r  [phash] {i+1}/{len(images)} {p.name[:40]}")
-        try: ph.append((p, imagehash.phash(Image.open(p).convert('RGB'))))
-        except: pass
-    print()
-    groups, seen = [], set()
-    for i,(pa,ha) in enumerate(ph):
-        if i in seen: continue
-        grp = [pa]
-        for j,(pb,hb) in enumerate(ph):
-            if i!=j and j not in seen and ha-hb<=threshold:
-                grp.append(pb); seen.add(j)
-        if len(grp)>1: seen.add(i); groups.append(grp)
-    return groups
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument('folder')
-    ap.add_argument('--mode', choices=['exact','perceptual','both'], default='both')
-    ap.add_argument('--threshold', type=int, default=10)
-    ap.add_argument('--output', default='dupescope_report.json')
-    args = ap.parse_args()
-
-    folder = Path(args.folder)
-    images = scan_images(folder)
-    print(f"Found {len(images)} images\\n")
-
-    exact, perceptual = {}, []
-    if args.mode in ('exact','both'):
-        print("[1] Exact (SHA-256)...")
-        exact = find_exact(images)
-    if args.mode in ('perceptual','both'):
-        print("[2] Perceptual (pHash)...")
-        perceptual = find_perceptual(images, args.threshold)
-
-    report = {
-        "folder": str(folder),
-        "total": len(images),
-        "exact_groups": [{"hash":h,"files":[str(p) for p in ps]} for h,ps in exact.items()],
-        "similar_groups": [[str(p) for p in g] for g in perceptual],
-    }
-    with open(args.output,'w') as f: json.dump(report, f, indent=2)
-    print(f"\\nExact groups:   {len(exact)}")
-    print(f"Similar groups: {len(perceptual)}")
-    print(f"Report → {args.output}")
-
-if __name__ == '__main__': main()`;
-
-function ScriptPanel({T}) {
+function ScriptPanel({ T }) {
   const [copied, setCopied] = useState(false);
-  const copy = () => {
-    navigator.clipboard.writeText(PYTHON_SCRIPT).then(() => {
-      setCopied(true); setTimeout(() => setCopied(false), 1800);
-    });
-  };
   return (
     <div>
-      <div style={{ fontSize:12, color:T.txtMuted, lineHeight:1.7, marginBottom:16 }}>
+      <div style={{ fontSize: 12, color: T.txtMuted, lineHeight: 1.7, marginBottom: 16 }}>
         Runs 100% offline. No data leaves your machine. Requires Python 3.8+.
       </div>
-
-      {/* Install & usage strip */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
-        {[
-          ["Install", "pip install Pillow imagehash"],
-          ["Run", "python dupescope.py ~/Pictures --mode both"],
-        ].map(([lbl, cmd]) => (
-          <div key={lbl} style={{ background:T.bgCard, border:`1px solid ${T.border}`, borderRadius:8, padding:"10px 14px" }}>
-            <div style={{ fontSize:10, color:T.txtDim, letterSpacing:"0.07em", marginBottom:4 }}>{lbl}</div>
-            <div style={{ fontSize:11, color:T.accent, fontFamily:T.mono }}>{cmd}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        {[["Install", "pip install Pillow imagehash rawpy flask flask-cors"], ["Run server", "python server.py"]].map(([l, c]) => (
+          <div key={l} style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 14px" }}>
+            <div style={{ fontSize: 10, color: T.txtDim, letterSpacing: "0.07em", marginBottom: 4 }}>{l}</div>
+            <div style={{ fontSize: 11, color: T.accent, fontFamily: T.mono }}>{c}</div>
           </div>
         ))}
-      </div>
-
-      {/* Code block */}
-      <div style={{ background:T.bgCard, border:`1px solid ${T.border}`, borderRadius:10, overflow:"hidden" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 14px", borderBottom:`1px solid ${T.border}` }}>
-          <span style={{ fontSize:11, color:T.txtMuted, fontFamily:T.mono }}>dupescope.py</span>
-          <button onClick={copy} style={{
-            fontSize:10, padding:"4px 10px", borderRadius:5, cursor:"pointer",
-            border:`1px solid ${copied ? T.success : T.border}`,
-            background:"transparent", color: copied ? T.success : T.txtMuted,
-            fontFamily:T.mono, transition:"all 0.2s",
-          }}>{copied ? "Copied!" : "Copy"}</button>
-        </div>
-        <pre style={{
-          padding:"16px", overflowX:"auto", overflowY:"auto", maxHeight:440,
-          fontSize:11, lineHeight:1.75, color:T.txtMuted, fontFamily:T.mono, margin:0,
-        }}>{PYTHON_SCRIPT}</pre>
       </div>
     </div>
   );
 }
 
-// ─── Main App ────────────────────────────────────────────────────────────────
+// ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [theme, setTheme] = useState("dark");
-  const T = THEMES[theme];
- 
-  const [tab, setTab] = useState("scanner");
-  const [scanResults, setScanResults] = useState(null);
-  
-  const handleScanDone = (groups) => {
-    setScanResults(groups);
+  const [theme, setTheme]     = useState("dark");
+  const T                     = THEMES[theme];
+  const [tab, setTab]         = useState("scanner");
+  const [report, setReport]   = useState(null);
+  const [jobId, setJobId]     = useState(null);
+
+  const handleJobDone = (reportData, jid) => {
+    setReport(reportData);
+    setJobId(jid);
     setTab("results");
   };
 
   const TABS = [
-    { id:"scanner", label:"◈ SCANNER" },
-    { id:"results", label:`▣ RESULTS${scanResults ? ` (${scanResults.length})` : ""}` },
-    { id:"iris",    label:"✦ IRIS — AI ASSISTANT" },
-    { id:"script",  label:"{ } PYTHON SCRIPT" },
+    { id: "scanner", label: "◈ SCANNER" },
+    { id: "results", label: `▣ RESULTS${report ? ` (${(report.exactGroups?.length || 0) + (report.similarGroups?.length || 0)} groups)` : ""}` },
+    { id: "iris",    label: "✦ IRIS — AI" },
+    { id: "script",  label: "{ } SETUP" },
   ];
 
   return (
-    <div style={{
-      background:T.bg, color:T.txt, fontFamily:T.sans,
-      minHeight:"100vh", padding:"24px 28px",
-    }}>
-      {/* Bounce keyframes */}
+    <div style={{ background: T.bg, color: T.txt, fontFamily: T.sans, minHeight: "100vh", padding: "22px 28px" }}>
       <style>{`
-        @keyframes bounce {
-          0%,80%,100%{transform:translateY(0)}
-          40%{transform:translateY(-6px)}
-        }
-        input[type=range]{accent-color:${T.accent}}
-        ::-webkit-scrollbar{width:6px;height:6px}
-        ::-webkit-scrollbar-track{background:transparent}
-        ::-webkit-scrollbar-thumb{background:${T.border};border-radius:3px}
-        *{box-sizing:border-box}
+        @keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-5px)} }
+        input[type=range]{ accent-color:${T.accent} }
+        ::-webkit-scrollbar{ width:5px } ::-webkit-scrollbar-thumb{ background:${T.border};border-radius:3px }
+        *{ box-sizing:border-box }
       `}</style>
 
       {/* Header */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:28 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 26 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{
-            width:38, height:38, borderRadius:9,
-            background:`linear-gradient(135deg, ${T.accentDim}, #1a1a38)`,
-            border:`1px solid ${T.accent}`, display:"flex", alignItems:"center",
-            justifyContent:"center", fontSize:18, color:T.accent,
+            width: 38, height: 38, borderRadius: 9,
+            background: `linear-gradient(135deg, ${T.accentDim}, #1a1a38)`,
+            border: `1px solid ${T.accent}`, display: "flex", alignItems: "center",
+            justifyContent: "center", fontSize: 18, color: T.accent,
           }}>◈</div>
           <div>
-            <div style={{ fontSize:18, fontWeight:600, letterSpacing:"-0.025em", color:T.txt }}>DupeScope</div>
-            <div style={{ fontSize:10, color:T.txtDim, letterSpacing:"0.08em", textTransform:"uppercase" }}>Privacy-First · Fully Offline</div>
+            <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.025em", color: T.txt }}>DupeScope</div>
+            <div style={{ fontSize: 10, color: T.txtDim, letterSpacing: "0.08em", textTransform: "uppercase" }}>Privacy-First · Fully Offline</div>
           </div>
         </div>
-        <div style={{ display:"flex", gap:8 }}>
-          {[["NO NETWORK", T.success], ["LOCAL ONLY", T.accent]].map(([lbl,col]) => (
-            <span key={lbl} style={{
-              fontSize:9, padding:"3px 9px", borderRadius:4, fontFamily:T.mono,
-              border:`1px solid ${col}33`, color:col, letterSpacing:"0.08em",
-            }}>{lbl}</span>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {[["NO NETWORK", T.success], ["LOCAL ONLY", T.accent]].map(([lbl, col]) => (
+            <span key={lbl} style={{ fontSize: 9, padding: "3px 9px", borderRadius: 4, fontFamily: T.mono, border: `1px solid ${col}44`, color: col, letterSpacing: "0.08em" }}>{lbl}</span>
           ))}
-        </div>
-        <div style={{ display:"flex", alignItems:"center", gap:1 }}>
-          <button
-  onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
-  style={{
-    padding: "6px 12px",
-    borderRadius: 6,
-    border: `1px solid ${T.border}`,
-    background: T.bgCard,
-    color: T.txt,
-    fontFamily: T.mono,
-    cursor: "pointer"
-  }}
->
-  {theme === "dark" ? "☀ Light" : "🌙 Dark"}
-</button>
+          <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} style={{
+            padding: "5px 12px", borderRadius: 6, border: `1px solid ${T.border}`,
+            background: T.bgCard, color: T.txt, fontFamily: T.mono, fontSize: 11, cursor: "pointer",
+          }}>{theme === "dark" ? "☀ Light" : "🌙 Dark"}</button>
         </div>
       </div>
 
-      {/* Tabs */}
       <TabBar tabs={TABS} active={tab} onChange={setTab} T={T} />
 
-      {/* Panels */}
-      {tab === "scanner" && <ScannerPanel T={T} onScanDone={handleScanDone} />}
-      {tab === "results" && <ResultsPanel T={T} groups={scanResults} />}
+      {tab === "scanner" && <ScannerPanel T={T} onJobDone={handleJobDone} />}
+      {tab === "results" && <ResultsPanel T={T} report={report} jobId={jobId} />}
       {tab === "iris"    && <ChatPanel T={T} />}
       {tab === "script"  && <ScriptPanel T={T} />}
     </div>

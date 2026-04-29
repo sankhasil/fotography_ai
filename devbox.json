@@ -1,35 +1,53 @@
 {
-  "$schema":  "https://raw.githubusercontent.com/jetify-com/devbox/0.16.0/.schema/devbox.schema.json",
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.16.0/.schema/devbox.schema.json",
   "packages": [
     "nodejs@22",
     "python@3.11",
     "git",
     "ffmpeg"
-  
   ],
+  "env": {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONUNBUFFERED": "1",
+    "PIP_DISABLE_PIP_VERSION_CHECK": "1"
+  },
   "shell": {
-     "init_hook": [
-      "echo 'Devbox AI environment ready'",
+    "init_hook": [
+      "echo '🚀 Devbox AI environment ready'",
       "node -v",
       "npm -v",
-      "python --version"
+      "python --version",
+      "echo '🧩 Enter backend directory'",
+      "cd dupescope-backend",
+      "echo '🧪 Create venv if missing'",
+      "if [ ! -d .venv ]; then python -m venv .venv; fi",
+      "echo '🖥️ Activate backend venv'",
+      "source .venv/bin/activate",
+      "echo '📥 Upgrade pip'",
+      "python -m pip install --upgrade pip",
+      "echo '💾 Install backend requirements'",
+      "if [ -f requirements.txt ]; then pip install -r requirements.txt; fi",
+      "echo '📦 Backend ready (dupescope-backend)'"
     ],
-  
-  "scripts": {
-    "start": [
-      "echo 'Starting backend + frontend...'",
-      "devbox run backend & devbox run frontend",
-      "wait"
-    ],
-    "backend": [
-      "echo 'Starting Python backend...'",
-      "pkill -f dupescope-backend/server.py || true",
-      "python dupescope-backend/server.py"
-    ],
-    "frontend": [
-      "echo 'Starting React frontend...'",
-      "cd dupescope-ui && npm run dev"
-    ]
+    "scripts": {
+      "start": [
+        "echo 'Starting backend + frontend...'",
+        "devbox run backend & devbox run frontend",
+        "wait"
+      ],
+      "backend": [
+        "echo 'Starting Python backend...'",
+        "source dupescope-backend/.venv/bin/activate",
+        "pkill -f dupescope-backend/server.py || true",
+        "python dupescope-backend/server.py"
+      ],
+      "frontend": [
+        "echo 'Starting React frontend...'",
+        "cd dupescope-ui && npm install && npm run dev"
+      ],
+      "test": [
+        "source .venv/bin/activate && pytest -s tests/server_api_e2e_test.py"
+      ]
+    }
   }
- }
 }
