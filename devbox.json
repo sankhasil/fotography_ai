@@ -1,0 +1,35 @@
+{
+  "$schema":  "https://raw.githubusercontent.com/jetify-com/devbox/0.16.0/.schema/devbox.schema.json",
+  "packages": [
+    "nodejs@22",
+    "python@3.11",
+    "git",
+    "ffmpeg"
+  
+  ],
+  "shell": {
+     "init_hook": [
+      "echo 'Devbox AI environment ready'",
+      "node -v",
+      "npm -v",
+      "python --version"
+    ],
+  
+  "scripts": {
+    "start": [
+      "echo 'Starting backend + frontend...'",
+      "devbox run backend & devbox run frontend",
+      "wait"
+    ],
+    "backend": [
+      "echo 'Starting Python backend...'",
+      "pkill -f dupescope-backend/server.py || true",
+      "python dupescope-backend/server.py"
+    ],
+    "frontend": [
+      "echo 'Starting React frontend...'",
+      "cd dupescope-ui && npm run dev"
+    ]
+  }
+ }
+}
