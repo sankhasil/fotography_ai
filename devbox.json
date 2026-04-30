@@ -27,7 +27,9 @@
       "python -m pip install --upgrade pip",
       "echo '💾 Install backend requirements'",
       "if [ -f requirements.txt ]; then pip install -r requirements.txt; fi",
-      "echo '📦 Backend ready (dupescope-backend)'"
+      "echo '📦 Backend ready (dupescope-backend)'",
+      "start() { devbox run start;}",
+      "test() { devbox run test;}"
     ],
     "scripts": {
       "start": [
@@ -46,7 +48,7 @@
         "cd dupescope-ui && npm install && npm run dev"
       ],
       "test": [
-        "source .venv/bin/activate && pytest -s tests/server_api_e2e_test.py"
+        "source dupescope-backend/.venv/bin/activate && pytest -s tests/server_api_e2e_test.py"
       ]
     }
   }

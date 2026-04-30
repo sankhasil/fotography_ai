@@ -1,19 +1,56 @@
-version: '3.8'
+version: '3.9'
 
 services:
-  open-webui:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    profiles: ["docker"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - /Users/A200173944/.ollama:/root/.ollama
+
+  # 🍌 Image generator
+  stable-diffusion:
+    image: universonic/stable-diffusion-webui:full
+    container_name: stable-diffusion
+    profiles: ["image_generator"]
+    ports:
+      - "7860:7860"
+    volumes:
+      - sd_data:/data
+      - sd_models:/models
+    environment:
+      - CLI_ARGS=--api --listen
+    restart: unless-stopped
+
+  # 🟢 WebUI using LOCAL (native) Ollama
+  open-webui-local:
     image: ghcr.io/open-webui/open-webui:main
     container_name: open-webui
-    restart: unless-stopped
+    profiles: ["local"]
     ports:
       - "3000:8080"
-    volumes:
-      - open-webui_data:/app/backend/data
     environment:
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
-      - WEBUI_AUTH=false          # Set to true later if you want username/password
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - WEBUI_AUTH=false
+    volumes:
+      - open-webui_data:/app/backend/data
+
+  # 🐳 WebUI using DOCKER Ollama
+  open-webui-docker:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    profiles: ["docker"]
+    ports:
+      - "3000:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - WEBUI_AUTH=false
+    volumes:
+      - open-webui_data:/app/backend/data
 
 volumes:
   open-webui_data:
+  sd_data:
+  sd_models:
