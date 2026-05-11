@@ -170,8 +170,10 @@ def main_processor(root_directory: str, dry_run: bool = False):
 # CLI entry
 # -------------------------
 if __name__ == "__main__":
+    import sys
+    
     if len(sys.argv) < 2:
-        print("Usage: python script.py <root_directory> [--dry-run]")
+        print("Usage: python archive.py <root_directory> [--dry-run]")
         sys.exit(1)
 
     target_directory = sys.argv[1]

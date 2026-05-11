@@ -46,6 +46,10 @@ BANNER = r"""
  Privacy-First · Fully Offline · No Data Leaves Your Machine
 """
 
+ 
+# Add this line after your imports:
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+
 # ── Utilities ────────────────────────────────────────────────────────────────
 
 def open_raw_with_sips(path: Path, max_size: int = 1024) -> Image.Image | None:
@@ -305,7 +309,7 @@ def evaluate_image(path: Path):
 
     try:
         result = requests.post(
-            "http://localhost:11434/api/chat",
+            f"{OLLAMA_URL}/api/chat",
             json=payload,
             timeout=120
         )
