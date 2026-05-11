@@ -1,8 +1,8 @@
 # ─────────────────────────────────────────────────────────────
 # DupeScope Docker Image
 # ─────────────────────────────────────────────────────────────
-# Base: slim Python 3.12 (smaller image)
-FROM python:3.12-slim
+# Base: slim Python 3.11 (smaller image)
+FROM python:3.14-slim-trixie
 
 # ── Labels ────────────────────────────────────────────────────
 LABEL maintainer="DupeScope"
@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     python3-dev \
+    pkg-config \
     libraw-dev \
     libjpeg-dev \
     libpng-dev \
@@ -25,14 +26,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Python dependencies ───────────────────────────────────────
-COPY ../dupescope-backend/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
-
+COPY dupescope-backend/requirements.txt /app/requirements.txt
+RUN pip3 install --no-cache-dir numpy --verbose
+RUN pip3 install --no-cache-dir rawpy --verbose
+RUN pip3 install --no-cache-dir -r /app/requirements.txt --verbose
 # ── App files ─────────────────────────────────────────────────
 WORKDIR /app
-COPY ../dupescope-backend/dupescope.py      /app/dupescope.py
-COPY ../dupescope-backend/process_dupescope_report.py        /app/archive.py
-COPY ../docker_builder/entrypoint.sh     /app/entrypoint.sh
+COPY dupescope-backend/dupescope.py      /app/dupescope.py
+COPY dupescope-backend/process_dupescope_report.py        /app/archive.py
+COPY docker_builder/entrypoint.sh     /app/entrypoint.sh
 
 RUN chmod +x /app/entrypoint.sh
 

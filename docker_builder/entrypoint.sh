@@ -44,6 +44,34 @@ echo "  Dry run    : $DRY_RUN"
 echo "  ─────────────────────────────────────────"
 echo ""
 
+# ── Dependency sanity check ───────────────────────────────────
+echo "  [check] Verifying Python dependencies..."
+
+python - <<'EOF'
+import sys
+
+missing = []
+
+try:
+    import numpy
+except ImportError:
+    missing.append("numpy")
+
+try:
+    import rawpy
+except ImportError:
+    missing.append("rawpy")
+
+if missing:
+    print("\n[ERROR] Missing required Python packages:")
+    for m in missing:
+        print(f"   - {m}")
+    print("\nFix: rebuild Docker image or ensure pip install includes dependencies.")
+    sys.exit(1)
+
+print("   [OK] All required Python dependencies are installed.")
+EOF
+
 # ── Validate photos dir ───────────────────────────────────────
 if [[ "$COMMAND" != "help" && "$COMMAND" != "--help" ]]; then
     if [[ ! -d "$PHOTOS_DIR" ]]; then
@@ -70,7 +98,7 @@ case "$COMMAND" in
   scan)
     echo "  [1/1] Running duplicate scan…"
     echo ""
-    python /app/dupescope.py "${SCAN_ARGS[@]}"
+    python3 /app/dupescope.py "${SCAN_ARGS[@]}"
     echo ""
     echo "  ✓ Report written to $PHOTOS_DIR/$OUTPUT"
     ;;
@@ -92,7 +120,7 @@ case "$COMMAND" in
 
     echo "  [1/1] Archiving files from report: $REPORT_PATH"
     echo ""
-    python /app/archive.py "$PHOTOS_DIR" $DRY_FLAG
+    python3 /app/archive.py "$PHOTOS_DIR" $DRY_FLAG
     echo ""
     echo "  ✓ Archive complete. Files moved to _ARCHIVED/ next to originals."
     ;;
@@ -101,7 +129,7 @@ case "$COMMAND" in
   scan-and-archive)
     echo "  [1/2] Running duplicate scan…"
     echo ""
-    python /app/dupescope.py "${SCAN_ARGS[@]}"
+    python3 /app/dupescope.py "${SCAN_ARGS[@]}"
     echo ""
     echo "  ✓ Scan done. Report at $PHOTOS_DIR/$OUTPUT"
     echo ""
@@ -114,7 +142,7 @@ case "$COMMAND" in
 
     echo "  [2/2] Archiving AI-delete files…"
     echo ""
-    python /app/archive.py "$PHOTOS_DIR" $DRY_FLAG
+    python3 /app/archive.py "$PHOTOS_DIR" $DRY_FLAG
     echo ""
     echo "  ✓ All done. Check _ARCHIVED/ folders next to your images."
     ;;

@@ -21,6 +21,7 @@ import sys
 import base64
 import subprocess
 import tempfile
+import shutil
 from pathlib import Path
 from collections import defaultdict
 from datetime import datetime
@@ -34,7 +35,8 @@ except ImportError:
     print("    pip install Pillow imagehash\n")
 
 # Supported image extensions
-EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif', '.heic', '.avif', '.raw', '.cr2', '.nef'}
+EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif', '.heic', '.avif'}
+RAW_EXTS = {'.dng', '.arw', '.raw', '.cr2', '.nef'}
 
 BANNER = r"""
   ____                  ____
@@ -57,6 +59,10 @@ def open_raw_with_sips(path: Path, max_size: int = 1024) -> Image.Image | None:
     Fallback RAW decoder using macOS built-in sips.
     Supports all Nikon NEF variants including newest bodies.
     """
+
+    if not shutil.which("sips"):
+        print("[SKIP] sips command not found on system")
+        return None
     try:
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
             tmp_path = tmp.name
@@ -91,7 +97,7 @@ def open_image(path: Path, max_size: int = 1024) -> Image.Image | None:
     """
     ext = path.suffix.lower()
 
-    if ext in EXTS:
+    if ext in RAW_EXTS:
         # Try rawpy first (faster when it works)
         try:
             import rawpy
