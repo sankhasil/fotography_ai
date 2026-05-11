@@ -28,7 +28,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 WORKDIR /app
 COPY ../dupescope-backend/dupescope.py      /app/dupescope.py
 COPY ../dupescope-backend/process_dupescope_report.py        /app/archive.py
-COPY entrypoint.sh     /app/entrypoint.sh
+COPY ../docker_builder/entrypoint.sh     /app/entrypoint.sh
 
 RUN chmod +x /app/entrypoint.sh
 
