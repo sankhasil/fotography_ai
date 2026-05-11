@@ -7,4 +7,5 @@ imagehash==4.3.1
 tqdm==4.66.5
 Flask-SocketIO==5.3.6
 eventlet==0.36.1
+rawpy==0.25.1
 pytest==9.0.3

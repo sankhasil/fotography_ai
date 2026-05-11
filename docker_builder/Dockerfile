@@ -13,6 +13,10 @@ LABEL description="Privacy-first duplicate photo detector + archiver"
 # libjpeg-dev → Pillow JPEG support
 # libpng-dev  → Pillow PNG support
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    g++ \
+    python3-dev \
     libraw-dev \
     libjpeg-dev \
     libpng-dev \
