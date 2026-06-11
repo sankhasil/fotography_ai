@@ -9,3 +9,5 @@ Flask-SocketIO==5.3.6
 eventlet==0.36.1
 rawpy>=0.26.0
 pytest==9.0.3
+opencv-python>=4.12
+scikit-image>=0.26
