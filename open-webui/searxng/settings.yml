@@ -1,0 +1,53 @@
+# SearXNG settings — minimal config for Open WebUI integration
+# Place this file at ./searxng/settings.yml
+# SearXNG will not start without it
+
+use_default_settings: true
+
+general:
+  instance_name: "DupeScope Search"
+  debug: false
+
+search:
+  safe_search: 0
+  autocomplete: "google"
+  default_lang: "en"
+
+# Allow the JSON format — required for Open WebUI RAG web search
+server:
+  secret_key: "change-me-to-a-random-string"   # must match docker-compose.yml
+  bind_address: "0.0.0.0"
+  port: 8080
+
+# Enable JSON output format (required for Open WebUI integration)
+search:
+  formats:
+    - html
+    - json
+
+# Engines to use for code/tech searches
+engines:
+  - name: google
+    engine: google
+    use_mobile_ui: false
+    shortcut: g
+
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+
+  - name: github
+    engine: github
+    shortcut: gh
+
+  - name: stackoverflow
+    engine: stackoverflow
+    shortcut: so
+
+  - name: npm
+    engine: npm
+    shortcut: npm
+
+  - name: pypi
+    engine: pypi
+    shortcut: pypi

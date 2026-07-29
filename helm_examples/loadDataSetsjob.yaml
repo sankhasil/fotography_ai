@@ -1,0 +1,370 @@
+{{- $ld := index .Values "azs-common-chart" "loadDataSets" }}
+{{- if $ld.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "azs-common.fullname" . }}-data-load
+  labels:
+    {{- include "azs-common.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+data:
+  package.json: |
+    {
+      "name": "data-loader",
+      "version": "1.0.0",
+      "private": true,
+      "dependencies": {
+        "jsonwebtoken": "^9.0.2"
+      }
+    }
+  generate_tokens.js: |
+    const jwt = require('jsonwebtoken');
+    const crypto = require('crypto');
+    const dns = require('dns');
+    const net = require('net');
+    const { URL } = require('url');
+
+    const backendUrl = process.env.BACKEND_URL;
+    const apiKey = process.env.API_KEY;
+    const REPEATS = process.env.REPEAT;
+
+    const scenarioEmails = [
+      "1@example.de",
+      "2@example.de",
+      "3@example.de",
+      "4@example.de"
+    ];
+
+    const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+    });
+
+    const baseAccessTokenPayload = {
+      "sub": "c5e83c79-134d-4327-94af-c97987ceb4f4",
+      "euid": "c5e83c79-134d-4327-94af-c97987ceb4f4",
+      "iss": "https://web.plus.ru.aok.sek-idp-tsi.de",
+      "client_id": "aml-app",
+      "authorities": ["ROLE_CLIENT", "ROLE_TRUSTED_CLIENT"],
+      "aud": "aml-app",
+      "permissions": [
+        "d_address", "d_document", "d_personal", "delete_basket",
+        "import_contact_token", "login", "openid", "r_activity",
+        "r_address", "r_document", "r_eid", "r_permrule",
+        "r_personal", "r_preference", "r_serviceprovider", "r_settings",
+        "r_transaction", "r_videoident", "read_basket", "read_contact_token",
+        "w_activity", "w_address", "w_preference", "w_settings",
+        "w_transaction", "w_userstatus", "w_videoident", "write_basket",
+        "write_contact_token", "write_delete_token", "r_epa", "w_epa",
+        "w_health_insurance", "r_health_insurance", "w_document",
+        "r_third_party_idp", "w_third_party_idp", "r_activation_methods",
+        "w_sms_tan", "w_activation_code", "r_waas_terms_and_conditions",
+        "w_waas_terms_and_conditions"
+      ],
+      "scope": [
+        "openid", "urn:telematik:email", "urn:telematik:versicherter",
+        "urn:telematik:display_name", "urn:telematik:geburtsdatum",
+        "urn:telematik:given_name"
+      ],
+      "basket_id": "b01bf373-9c72-4ae2-9f86-4f861dcf3bef",
+      "exp": 1784292297,
+      "iat": 1784290497,
+      "jti": "1790120c-81d9-11f1-be08-4bf3fb6e51c1"
+    };
+
+    const MAX_RETRIES = 5;
+    const INITIAL_BACKOFF_MS = 3000;
+
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function resolveDns(hostname) {
+      return new Promise((resolve) => {
+        dns.resolve4(hostname, (err, addresses) => {
+          if (err) {
+            resolve({ ok: false, error: err.code || err.message });
+          } else {
+            resolve({ ok: true, addresses });
+          }
+        });
+      });
+    }
+
+    function tcpCheck(host, port, timeoutMs = 3000) {
+      return new Promise((resolve) => {
+        const socket = new net.Socket();
+        const timer = setTimeout(() => {
+          socket.destroy();
+          resolve({ ok: false, error: 'connection timed out' });
+        }, timeoutMs);
+        socket.connect(port, host, () => {
+          clearTimeout(timer);
+          socket.destroy();
+          resolve({ ok: true });
+        });
+        socket.on('error', (err) => {
+          clearTimeout(timer);
+          socket.destroy();
+          resolve({ ok: false, error: err.code || err.message });
+        });
+      });
+    }
+
+    function describeError(error) {
+      let chain = [];
+      let current = error;
+      while (current) {
+        chain.push(`${current.constructor.name}: ${current.message}`);
+        current = current.cause;
+      }
+      return chain.join(' <- ');
+    }
+
+    async function diagnose() {
+      let parsed;
+      try {
+        parsed = new URL(backendUrl);
+      } catch (e) {
+        console.error(`[DIAG] BACKEND_URL is not a valid URL: "${backendUrl}" — ${e.message}`);
+        return;
+      }
+
+      const host = parsed.hostname;
+      const port = parsed.port ? parseInt(parsed.port, 10) : (parsed.protocol === 'https:' ? 443 : 80);
+
+      console.log(`[DIAG] URL:       ${backendUrl}`);
+      console.log(`[DIAG] Host:      ${host}`);
+      console.log(`[DIAG] Port:      ${port}`);
+      console.log(`[DIAG] Protocol:  ${parsed.protocol}`);
+      console.log(`[DIAG] Path:      ${parsed.pathname}`);
+
+      const dnsResult = await resolveDns(host);
+      if (dnsResult.ok) {
+        console.log(`[DIAG] DNS:       OK — ${dnsResult.addresses.join(', ')}`);
+      } else {
+        console.error(`[DIAG] DNS:       FAILED — ${dnsResult.error}`);
+        console.error(`[DIAG] Hint:      hostname "${host}" cannot be resolved. Check the BACKEND_URL value and that the target service exists in this cluster.`);
+        return;
+      }
+
+      const tcpResult = await tcpCheck(host, port);
+      if (tcpResult.ok) {
+        console.log(`[DIAG] TCP:       OK — ${host}:${port} is reachable`);
+      } else {
+        console.error(`[DIAG] TCP:       FAILED — ${tcpResult.error}`);
+        console.error(`[DIAG] Hint:      ${host}:${port} is not accepting connections. Is the target service running and listening on port ${port}?`);
+        return;
+      }
+
+      const healthPath = parsed.pathname.replace(/\/api\/.*/, '/actuator/health/liveness').replace(/\/data-capture\/?$/, '/actuator/health/liveness');
+      const healthUrl = `${parsed.protocol}//${parsed.host}${healthPath}`;
+      try {
+        const resp = await fetch(healthUrl, { signal: AbortSignal.timeout(5000) });
+        console.log(`[DIAG] Health:    ${resp.status} ${resp.ok ? 'OK' : '(not ready)'} — ${healthUrl}`);
+      } catch (e) {
+        console.error(`[DIAG] Health:    FAILED — ${describeError(e)}`);
+        console.error(`[DIAG] Hint:      TCP connects but HTTP fails. Possible TLS mismatch, wrong port, or service not handling HTTP on this endpoint.`);
+      }
+    }
+
+    const stats = { ok: 0, fail: 0, error: 0 };
+
+    function formatHeaders(headers) {
+      const entries = [];
+      headers.forEach((v, k) => entries.push(`${k}: ${v}`));
+      return entries.join(', ');
+    }
+
+    async function sendToken(tokenPair, label) {
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const t0 = Date.now();
+          const response = await fetch(backendUrl, {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-api-key": apiKey },
+            body: JSON.stringify(tokenPair)
+          });
+          const ms = Date.now() - t0;
+          if (response.ok) {
+            stats.ok++;
+            console.log(`[OK]   ${label} | ${response.status} ${response.statusText} | ${ms}ms`);
+            return;
+          }
+          const resBody = await response.text().catch(() => '(unreadable)');
+          const resHeaders = formatHeaders(response.headers);
+          stats.fail++;
+          console.error(`[FAIL] ${label} | ${response.status} ${response.statusText} | ${ms}ms`);
+          console.error(`  headers: ${resHeaders}`);
+          console.error(`  body:    ${resBody.substring(0, 500)}`);
+          if (response.status >= 500) {
+            throw new Error(`server ${response.status}`);
+          }
+          return;
+        } catch (error) {
+          const detail = describeError(error);
+          if (attempt < MAX_RETRIES) {
+            const backoff = INITIAL_BACKOFF_MS * Math.pow(2, attempt - 1);
+            console.error(`[RETRY] ${label} attempt ${attempt}/${MAX_RETRIES}: ${detail} — retrying in ${backoff}ms`);
+            await sleep(backoff);
+          } else {
+            stats.error++;
+            console.error(`[ERROR] ${label} after ${MAX_RETRIES} attempts: ${detail}`);
+          }
+        }
+      }
+    }
+
+    async function run() {
+      console.log("=== Diagnostics ===");
+      await diagnose();
+      console.log("=== Loading Data ===");
+      console.log(`Scenarios: ${scenarioEmails.length} x ${REPEATS} repeats`);
+      for (let i = 0; i < scenarioEmails.length; i++) {
+        for (let r = 1; r <= REPEATS; r++) {
+          const email = scenarioEmails[i];
+          const randomLetter = String.fromCharCode(65 + Math.floor(Math.random() * 26));
+          const randomDigits = Math.floor(Math.random() * 1000000000).toString().padStart(9, '0');
+          const randomId = randomLetter + randomDigits;
+
+          const idTokenPayload = {
+            "at_hash": "KKf-o0Fgz5hO95vP3WREDA",
+            "sub": "c5e83c79-134d-4327-94af-c97987ceb4f4",
+            "birthdate": "1970-01-01",
+            "rat": 1784290481,
+            "urn:telematik:claims:id": randomId,
+            "urn:telematik:claims:organization": "107299005",
+            "amr": ["urn:telematik:auth:mEW"],
+            "iss": "https://web.plus.ru.aok.sek-idp-tsi.de",
+            "urn:telematik:claims:display_name": "Teddy Tester",
+            "nonce": "dFUyOwbM2f4-HlWBeFgLCw",
+            "urn:telematik:claims:given_name": "Teddy",
+            "sid": "b27a3043-b872-490f-834b-8f945fdef3b0",
+            "acr": "gematik-ehealth-loa-substantial",
+            "aud": "aml-app",
+            "urn:telematik:claims:profession": "1.2.276.0.76.4.49",
+            "auth_time": 1784290487,
+            "urn:telematik:claims:email": email,
+            "exp": 1784290797,
+            "iat": 1784290497,
+            "jti": "e612265e-74fb-4527-a1de-e66b80eb3498"
+          };
+
+          const accessTokenPayload = { ...baseAccessTokenPayload, jti: crypto.randomUUID() };
+          const idToken = jwt.sign(idTokenPayload, privateKey, { algorithm: 'RS256' });
+          const accessToken = jwt.sign(accessTokenPayload, privateKey, { algorithm: 'RS256' });
+
+          await sendToken({ idToken, accessToken }, `scenario=${i + 1} repeat=${r}/${REPEATS}`);
+        }
+      }
+      const total = stats.ok + stats.fail + stats.error;
+      console.log("=== Summary ===");
+      console.log(`Total: ${total} | OK: ${stats.ok} | Fail(4xx): ${stats.fail} | Error(5xx/network): ${stats.error}`);
+      if (stats.error > 0) {
+        process.exit(1);
+      }
+    }
+
+    run();
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "azs-common.fullname" . }}-data-load-{{ now | date "20060102150405" }}
+  labels:
+    {{- include "azs-common.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 300
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        {{- include "azs-common.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: data-loader
+      annotations:
+        sidecar.istio.io/inject: "false"
+    spec:
+      restartPolicy: Never
+      {{- with (index .Values "azs-common-chart" "imagePullSecrets") }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: install-deps
+          image: "node:20-alpine"
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              cp /scripts/package.json /work/package.json
+              cp /scripts/generate_tokens.js /work/generate_tokens.js
+              cd /work && npm install
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: workdir
+              mountPath: /work
+      containers:
+        - name: load-data
+          image: "node:20-alpine"
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              echo "=== Load Data Sets ==="
+              cd /work && node generate_tokens.js
+          env:
+            - name: BACKEND_URL
+              value: {{ $ld.url | quote }}
+            - name: REPEAT
+              value: {{ $ld.count | quote }}
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $ld.apiKey }}
+                  key: api-key
+            - name: NODE_TLS_REJECT_UNAUTHORIZED
+              value: "0"
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: workdir
+              mountPath: /work
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
+      volumes:
+        - name: scripts
+          configMap:
+            name: {{ include "azs-common.fullname" . }}-data-load
+        - name: workdir
+          emptyDir: {}
+{{- end }}
+
+
+---
+
+  ## Load Data Sets — INT environment
+  loadDataSets:
+    enabled: false
+    url: "http://oms.int.dvsb.sek-idp-tsi.de/api/v1/data-capture"
+    apiKey: oms-datasync-datacapture
+    count: 4

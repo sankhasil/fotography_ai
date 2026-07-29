@@ -4,7 +4,8 @@
     "nodejs@22",
     "python@3.11",
     "git",
-    "ffmpeg"
+    "ffmpeg",
+    "curl"
   ],
   "env": {
     "PYTHONDONTWRITEBYTECODE": "1",
@@ -17,38 +18,120 @@
       "node -v",
       "npm -v",
       "python --version",
+      "[ -f .env ] && set -a && source .env && set +a",
       "echo '🧩 Enter backend directory'",
       "cd dupescope-backend",
       "echo '🧪 Create venv if missing'",
       "if [ ! -d .venv ]; then python -m venv .venv; fi",
-      "echo '🖥️ Activate backend venv'",
+      "echo '🖥️  Activate backend venv'",
       "source .venv/bin/activate",
       "echo '📥 Upgrade pip'",
       "python -m pip install --upgrade pip",
       "echo '💾 Install backend requirements'",
       "if [ -f requirements.txt ]; then pip install -r requirements.txt; fi",
       "echo '📦 Backend ready (dupescope-backend)'",
-      "start() { devbox run start;}",
-      "test() { devbox run test;}"
+
+      "echo ''",
+      "echo '🐳 Docker stack commands available:'",
+      "echo '   devbox run stack start local     → WebUI + local Ollama + Search + Pipelines'",
+      "echo '   devbox run stack start full      → All services'",
+      "echo '   devbox run stack stop            → Stop everything'",
+      "echo '   devbox run stack status          → Show running containers'",
+      "echo '   devbox run stack help            → All commands'",
+      "echo ''",
+
+      "start()    { devbox run start; }",
+      "test()     { devbox run test; }",
+      "stack()    { devbox run stack \"$@\"; }",
+      "opencode() { devbox run opencode \"$@\"; }",
+      "pr-review() { devbox run pr-review \"$@\"; }"
     ],
     "scripts": {
+
       "start": [
         "echo 'Starting backend + frontend...'",
         "devbox run backend & devbox run frontend",
         "wait"
       ],
+
       "backend": [
         "echo 'Starting Python backend...'",
         "source dupescope-backend/.venv/bin/activate",
         "pkill -f dupescope-backend/server.py || true",
         "python dupescope-backend/server.py"
       ],
+
       "frontend": [
         "echo 'Starting React frontend...'",
         "cd dupescope-ui && npm install && npm run dev"
       ],
+
       "test": [
         "source dupescope-backend/.venv/bin/activate && pytest -s tests/server_api_e2e_test.py"
+      ],
+
+      "checkai": [
+        "bash scripts/check_prereqs.sh"
+      ],
+
+      "opencode": [
+        "bash scripts/opencode.sh $@"
+      ],
+
+      "pr-review": [
+        "bash scripts/pr-review.sh $@"
+      ],
+
+      "stack": [
+        "bash scripts/docker-stack.sh $@"
+      ],
+
+      "stack-local": [
+        "bash scripts/docker-stack.sh start local"
+      ],
+
+      "stack-docker": [
+        "bash scripts/docker-stack.sh start docker"
+      ],
+
+      "stack-full": [
+        "bash scripts/docker-stack.sh start full"
+      ],
+
+      "stack-images": [
+        "bash scripts/docker-stack.sh start images"
+      ],
+
+      "stack-automation": [
+        "bash scripts/docker-stack.sh start automation"
+      ],
+
+      "stack-monitoring": [
+        "bash scripts/docker-stack.sh start monitoring"
+      ],
+
+      "stack-all": [
+        "bash scripts/docker-stack.sh start all"
+      ],
+
+      "stack-stop": [
+        "bash scripts/docker-stack.sh stop"
+      ],
+
+      "stack-status": [
+        "bash scripts/docker-stack.sh status"
+      ],
+
+      "stack-logs": [
+        "bash scripts/docker-stack.sh logs $@"
+      ],
+
+      "stack-pull": [
+        "bash scripts/docker-stack.sh pull"
+      ],
+
+      "stack-restart": [
+        "bash scripts/docker-stack.sh restart $@"
       ]
     }
   }

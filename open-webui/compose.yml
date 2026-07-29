@@ -1,6 +1,60 @@
 version: '3.9'
 
+# ─────────────────────────────────────────────────────────────────────────────
+# DupeScope AI Stack
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# PROFILES:
+#   local          → Native Ollama (on your Mac) + Open WebUI
+#   docker         → Dockerised Ollama + Open WebUI
+#   image_generator→ Stable Diffusion WebUI
+#   search         → SearXNG (self-hosted web search — no tracking)
+#   pipelines      → Open WebUI Pipelines (Ponytail hooks, function calling)
+#   automation     → n8n workflow automation
+#   monitoring     → Portainer Docker management UI
+#
+# QUICK START EXAMPLES:
+#   Local Ollama + search + pipelines (most common):
+#     docker compose --profile local --profile search --profile pipelines up -d
+#
+#   Full Docker stack:
+#     docker compose --profile docker --profile search --profile pipelines \
+#                    --profile automation --profile monitoring up -d
+#
+#   Just test Open WebUI + local Ollama quickly:
+#     docker compose --profile local up -d
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Shared env block — applied to both WebUI variants via YAML anchors
+x-open-webui-env: &open-webui-env
+  # ── Ponytail: default system prompt ──────────────────────────────────────
+  # Open WebUI exposes DEFAULT_SYSTEM_PROMPT and injects it into every
+  # new conversation automatically. Users can still override it per-chat.
+  # To update: edit ponytail/system_prompt.txt → rebuild (or just restart
+  # if you switch to a mounted-file approach via a future pipeline).
+  DEFAULT_SYSTEM_PROMPT: "You are a pragmatic, senior software engineer who follows the Ponytail philosophy: write the minimum correct solution. No more, no less.\n\nCORE RULES:\n\n1. YAGNI - Never add code for future requirements that don't exist yet.\n\n2. USE WHAT EXISTS - Check the standard library first. Check the browser platform second. Only reach for a dependency if the built-in cannot do the job. Example: <input type=\"date\" /> beats installing flatpickr.\n\n3. DELETION IS PROGRESS - Fewer lines = fewer bugs. If you can delete code and tests still pass, delete it.\n\n4. NO PREMATURE ABSTRACTION - Don't create a base class until you have 3+ concrete implementations. Don't create a helper until you need it in 2+ places.\n\n5. BORING TECHNOLOGY - Prefer established tools. SQLite beats Redis for a single-user app.\n\nOn every response: Could this be fewer lines? Does this use a dep where a built-in works? Does this add abstraction nothing needs?\n\nLead with code. Maximum 3 sentences before code blocks. Commit to one answer."
+
+  # ── SearXNG web search ────────────────────────────────────────────────────
+  ENABLE_RAG_WEB_SEARCH: "true"
+  RAG_WEB_SEARCH_ENGINE: "searxng"
+  SEARXNG_QUERY_URL: "http://searxng:8080/search?q=<query>&format=json"
+
+  # ── Pipelines (Ponytail pipeline hooks + function calling) ────────────────
+  #OPENAI_API_BASE_URL: "http://pipelines:9099"
+  #OPENAI_API_KEY: "pipelines-local-key"
+
+  # ── General settings ──────────────────────────────────────────────────────
+  WEBUI_AUTH: "false"
+  WEBUI_NAME: "DupeScope AI"
+  ENABLE_COMMUNITY_SHARING: "false"
+  ENABLE_TELEMETRY: "false"
+
 services:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # OLLAMA — Dockerised LLM server
+  # Profile: docker
+  # ─────────────────────────────────────────────────────────────────────────
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
@@ -8,9 +62,132 @@ services:
     ports:
       - "11434:11434"
     volumes:
+      # Reuses your existing model cache — nothing re-downloads
       - /Users/A200173944/.ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
 
-  # 🍌 Image generator
+  # ─────────────────────────────────────────────────────────────────────────
+  # OPEN WEBUI — LOCAL Ollama
+  # Profile: local
+  # Talks to Ollama running natively on your Mac via host.docker.internal
+  # ─────────────────────────────────────────────────────────────────────────
+  open-webui-local:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    profiles: ["local"]
+    ports:
+      - "3000:3000"
+    environment:
+      <<: *open-webui-env
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+    volumes:
+      - open-webui_data:/app/backend/data
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # OPEN WEBUI — DOCKER Ollama
+  # Profile: docker
+  # Talks to the ollama container on internal Docker network
+  # ─────────────────────────────────────────────────────────────────────────
+  open-webui-docker:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    profiles: ["docker"]
+    ports:
+      - "3000:3000"
+    environment:
+      <<: *open-webui-env
+      OLLAMA_BASE_URL: "http://ollama:11434"
+    volumes:
+      - open-webui_data:/app/backend/data
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # OPEN WEBUI PIPELINES
+  # Profile: pipelines
+  #
+  # What it does:
+  #   Acts as an OpenAI-compatible proxy sitting between Open WebUI
+  #   and Ollama. Every request passes through it. You write Python
+  #   functions (pipelines) that can transform prompts, inject context,
+  #   run tools, call APIs, or enforce rules before/after the LLM.
+  #
+  # Ponytail use:
+  #   Drop a ponytail_pipeline.py in ./pipelines/ to enforce the
+  #   Ponytail rules at the API level — not just as a system prompt.
+  #
+  # UI: Not a user UI — it's an API proxy. Managed via Open WebUI
+  #     Admin Panel > Connections > OpenAI > http://pipelines:9099
+  #
+  # Docs: https://github.com/open-webui/pipelines
+  # ─────────────────────────────────────────────────────────────────────────
+  pipelines:
+    image: ghcr.io/open-webui/pipelines:main
+    container_name: pipelines
+    profiles: ["pipelines", "docker"]
+    ports:
+      - "9099:9099"
+    environment:
+      PIPELINES_API_KEY: "pipelines-local-key"
+    volumes:
+      - pipelines_data:/app/pipelines
+      # Drop .py pipeline files here and they hot-reload
+      - ./pipelines:/app/pipelines/custom:ro
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # SEARXNG — Self-hosted web search
+  # Profile: search
+  #
+  # What it does:
+  #   Gives Open WebUI a "Search the web" button in chat. Zero tracking.
+  #   Aggregates Google, Bing, DuckDuckGo without sending your identity.
+  #
+  # Setup needed after first run:
+  #   Create ./searxng/settings.yml (see README for minimal config)
+  #
+  # UI: http://localhost:8081
+  # ─────────────────────────────────────────────────────────────────────────
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    profiles: ["search", "docker"]
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      SEARXNG_BASE_URL: "http://localhost:8081"
+      SEARXNG_SECRET_KEY: "change-me-to-a-random-string"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8081/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # STABLE DIFFUSION — Image generator (unchanged from your original)
+  # Profile: image_generator
+  # UI: http://localhost:7860
+  # ─────────────────────────────────────────────────────────────────────────
   stable-diffusion:
     image: universonic/stable-diffusion-webui:full
     container_name: stable-diffusion
@@ -24,33 +201,62 @@ services:
       - CLI_ARGS=--api --listen
     restart: unless-stopped
 
-  # 🟢 WebUI using LOCAL (native) Ollama
-  open-webui-local:
-    image: ghcr.io/open-webui/open-webui:main
-    container_name: open-webui
-    profiles: ["local"]
+  # ─────────────────────────────────────────────────────────────────────────
+  # N8N — Visual workflow automation
+  # Profile: automation
+  #
+  # What it does:
+  #   Connect Ollama/DupeScope to the outside world without writing code.
+  #   Use cases for your stack:
+  #     - Watch a folder → trigger a scan → send Slack/email on completion
+  #     - Webhook from GitHub → ask Ollama to review the diff
+  #     - Schedule nightly scan → archive report → post summary
+  #
+  # UI: http://localhost:5678
+  # ─────────────────────────────────────────────────────────────────────────
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    profiles: ["automation"]
     ports:
-      - "3000:8080"
+      - "5678:5678"
     environment:
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
-      - WEBUI_AUTH=false
+      N8N_BASIC_AUTH_ACTIVE: "false"
+      N8N_HOST: "localhost"
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: "http"
+      WEBHOOK_URL: "http://localhost:5678"
+      # Lets n8n workflows call your local Ollama directly
+      OLLAMA_HOST: "http://host.docker.internal:11434"
     volumes:
-      - open-webui_data:/app/backend/data
+      - n8n_data:/home/node/.n8n
+    restart: unless-stopped
 
-  # 🐳 WebUI using DOCKER Ollama
-  open-webui-docker:
-    image: ghcr.io/open-webui/open-webui:main
-    container_name: open-webui
-    profiles: ["docker"]
+  # ─────────────────────────────────────────────────────────────────────────
+  # PORTAINER — Docker management UI
+  # Profile: monitoring
+  #
+  # What it does:
+  #   Web UI to view all containers, logs, resource usage, volumes,
+  #   networks. Much easier than running docker ps / docker logs manually.
+  #
+  # UI: http://localhost:9000
+  # ─────────────────────────────────────────────────────────────────────────
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    profiles: ["monitoring"]
     ports:
-      - "3000:8080"
-    environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - WEBUI_AUTH=false
+      - "9000:9000"
     volumes:
-      - open-webui_data:/app/backend/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    restart: unless-stopped
 
 volumes:
   open-webui_data:
+  pipelines_data:
   sd_data:
   sd_models:
+  n8n_data:
+  portainer_data:
