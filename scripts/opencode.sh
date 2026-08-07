@@ -23,7 +23,7 @@ MODEL="qwen2.5-coder:14b"
 OLLAMA_BASE="http://localhost:11434/v1"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 AGENTS_SRC="$REPO_ROOT/open-code/AGENTS.md"
-CONFIG_SRC="$REPO_ROOT/open-code/config.json"
+CONFIG_SRC="$REPO_ROOT/opencode.json"
 
 # Local install takes priority over global PATH
 LOCAL_BIN="$REPO_ROOT/open-code/node_modules/.bin/opencode"
@@ -50,8 +50,9 @@ fi
 
 echo -e "${BLD}◈ OpenCode${RST}  →  ${CYN}${TARGET}${RST}"
 
-# ── 2. Write global config once (idempotent) ──────────────────────────────────
-# Global config means every project gets the same model without a local file.
+# ── 2. Write project config once (idempotent) ────────────────────────────────
+# Repo-root opencode.json is discovered by opencode from any folder inside the
+# repo (walks up to the git worktree). Skills are registered from open-code/.
 if [ ! -f "$CONFIG_SRC" ]; then
   mkdir -p "$(dirname "$CONFIG_SRC")"
   cat > "$CONFIG_SRC" << EOF
@@ -65,8 +66,18 @@ if [ ! -f "$CONFIG_SRC" ]; then
       "options": {
         "baseURL": "$OLLAMA_BASE",
         "apiKey": "ollama"
+      },
+      "models": {
+        "qwen2.5-coder:14b": {
+          "name": "Qwen2.5 Coder 14B"
+        }
       }
     }
+  },
+  "skills": {
+    "paths": [
+      "$REPO_ROOT/open-code/.agents/skills"
+    ]
   }
 }
 EOF

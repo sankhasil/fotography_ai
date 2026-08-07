@@ -227,3 +227,6 @@ __marimo__/
 *_report.json
 *-summary.json
 .DS_Store
+
+#opencode
+.agents

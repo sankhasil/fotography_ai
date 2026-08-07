@@ -8,7 +8,17 @@
       "options": {
         "baseURL": "http://localhost:11434/v1",
         "apiKey": "ollama"
+      },
+      "models": {
+        "qwen2.5-coder:14b": {
+          "name": "Qwen2.5 Coder 14B"
+        }
       }
     }
+  },
+  "skills": {
+    "paths": [
+      "/Users/A200173944/PersonalCodes/fotography_ai/open-code/.agents/skills"
+    ]
   }
 }

@@ -1,0 +1,519 @@
+@import "tailwindcss";
+
+/* Semantic theme variables. `[data-theme]` / `[data-tone]` on <html> swap them at runtime. */
+:root {
+  color-scheme: light;
+  --bg: #fdf6ec;
+  --bg-panel: #fffdf8;
+  --bg-elevated: #f6ede1;
+  --fg: #3d3a35;
+  --muted: #8f867a;
+  --accent: #d99a6c;
+  --accent-fg: #ffffff;
+  --border: #eadfce;
+  --success: #5a9e6f;
+  --error: #c96f5e;
+  --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --anim-dur: 300ms;
+}
+
+/* Casual theme — dark tone. Light tone inherits :root defaults. */
+html[data-theme="casual"][data-tone="dark"] {
+  color-scheme: dark;
+  --bg: #2c2924;
+  --bg-panel: #38342d;
+  --bg-elevated: #423d35;
+  --fg: #f0e9de;
+  --muted: #a99d8c;
+  --accent: #e3a878;
+  --accent-fg: #2c2924;
+  --border: #4c453a;
+  --success: #7ab28b;
+  --error: #d8826f;
+}
+
+/* Cartoony theme — light and dark tones. */
+html[data-theme="cartoony"] {
+  --bg: #fff4e0;
+  --bg-panel: #fffdf5;
+  --bg-elevated: #ffe8c8;
+  --fg: #4a3b30;
+  --muted: #a3897a;
+  --accent: #ff7a59;
+  --accent-fg: #ffffff;
+  --border: #ffd9b8;
+  --success: #3fb878;
+  --error: #ff5d5d;
+  --font: "Chalkboard SE", "Comic Sans MS", cursive, system-ui, sans-serif;
+  --anim-dur: 320ms;
+}
+html[data-theme="cartoony"][data-tone="dark"] {
+  color-scheme: dark;
+  --bg: #2b2430;
+  --bg-panel: #382e3d;
+  --bg-elevated: #443949;
+  --fg: #ffeef0;
+  --muted: #b9a5ab;
+  --accent: #ff8a6b;
+  --accent-fg: #2b2430;
+  --border: #55464e;
+  --success: #57d395;
+  --error: #ff7373;
+}
+
+/* Card intro animations. Casual fades in; cartoony pops in with a spring
+   bounce. The easing overshoots (cubic-bezier > 1) for the spring feel. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.9) translateY(8px);
+  }
+  60% {
+    transform: scale(1.04) translateY(-2px);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-in {
+  animation: fade-in var(--anim-dur) ease-out both;
+}
+html[data-theme="cartoony"] .animate-in {
+  animation: pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Cartoony interactions: buttons spring under the cursor. */
+html[data-theme="cartoony"] button {
+  transition:
+    transform 0.15s ease,
+    background-color var(--anim-dur) ease,
+    color var(--anim-dur) ease;
+}
+html[data-theme="cartoony"] button:hover:not(:disabled) {
+  transform: translateY(-1px) scale(1.02);
+}
+html[data-theme="cartoony"] button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
+}
+
+/* Jarvis theme — HUD styling with gold highlights. */
+html[data-theme="jarvis"] {
+  --bg: #eef2f5;
+  --bg-panel: #f7fafc;
+  --bg-elevated: #e2e9ef;
+  --fg: #173042;
+  --muted: #6f8a9c;
+  --accent: #d4af37;
+  --accent-fg: #101820;
+  --border: #c7d6e0;
+  --success: #2e9e8f;
+  --error: #d64545;
+  --font: "SF Mono", "Cascadia Mono", "Menlo", ui-monospace, monospace;
+  --anim-dur: 400ms;
+}
+html[data-theme="jarvis"][data-tone="dark"] {
+  color-scheme: dark;
+  --bg: #0a0f14;
+  --bg-panel: #101820;
+  --bg-elevated: #1a2430;
+  --fg: #d7e3ea;
+  --muted: #6e8599;
+  --accent: #e6c04c;
+  --accent-fg: #101820;
+  --border: #233442;
+  --success: #4fd1c5;
+  --error: #ff6b5e;
+}
+
+/* Angular corners + subtle scanlines for the HUD feel. */
+html[data-theme="jarvis"] .rounded-lg,
+html[data-theme="jarvis"] .rounded {
+  border-radius: 3px;
+}
+html[data-theme="jarvis"] .app-bg {
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.015) 0 1px,
+    transparent 1px 3px
+  );
+}
+html[data-theme="jarvis"] .accent {
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+/* Sweep reveal: cards fade in and a gold light sweeps across once. */
+@keyframes sweep {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(220%);
+  }
+}
+html[data-theme="jarvis"] .animate-in {
+  position: relative;
+  overflow: hidden;
+  animation: fade-in 0.4s ease-out both;
+}
+html[data-theme="jarvis"] .animate-in::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  width: 40%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 15%, transparent),
+    transparent
+  );
+  animation: sweep 0.9s ease-out forwards;
+}
+
+/* Typewriter caret on in-flight assistant text. */
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+html[data-theme="jarvis"] .typewriter::after {
+  content: "▋";
+  margin-left: 1px;
+  color: var(--accent);
+  animation: caret-blink 0.9s steps(1) infinite;
+}
+
+/* Matrix theme — terminal green on near-black, with canvas rain. */
+html[data-theme="matrix"] {
+  --bg: #eef9f1;
+  --bg-panel: #f4fdf7;
+  --bg-elevated: #e0f6e7;
+  --fg: #0d2f1c;
+  --muted: #5f8a70;
+  --accent: #10b981;
+  --accent-fg: #052e14;
+  --border: #c8e8d2;
+  --success: #22c55e;
+  --error: #e5484d;
+  --font: "Courier New", ui-monospace, monospace;
+  --anim-dur: 350ms;
+}
+html[data-theme="matrix"][data-tone="dark"] {
+  color-scheme: dark;
+  --bg: #020d06;
+  --bg-panel: #04150b;
+  --bg-elevated: #062012;
+  --fg: #b7ffd2;
+  --muted: #3d7a56;
+  --accent: #1aff8c;
+  --accent-fg: #01140a;
+  --border: #0e3a22;
+  --success: #34d399;
+  --error: #f87171;
+}
+
+/* Terminal flicker on the app background. */
+@keyframes terminal-flicker {
+  0%,
+  91%,
+  94%,
+  100% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 0.97;
+  }
+  96% {
+    opacity: 0.985;
+  }
+}
+/* Slightly translucent background so the rain canvas shows through. */
+html[data-theme="matrix"] .app-bg {
+  background-color: color-mix(in srgb, var(--bg) 60%, transparent);
+  animation: terminal-flicker 5s steps(1) infinite;
+}
+
+/* Green token reveal: cards fade in with a green sweep, same as jarvis. */
+html[data-theme="matrix"] .animate-in {
+  position: relative;
+  overflow: hidden;
+  animation: fade-in 0.4s steps(14) both;
+}
+html[data-theme="matrix"] .animate-in::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  width: 40%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 15%, transparent),
+    transparent
+  );
+  animation: sweep 0.8s ease-out forwards;
+}
+
+html[data-theme="matrix"] .typewriter::after {
+  content: "▋";
+  margin-left: 1px;
+  color: var(--accent);
+  animation: caret-blink 0.7s steps(1) infinite;
+}
+
+/* Matrix progress widgets glow green. */
+html[data-theme="matrix"] .soft-progress::after {
+  box-shadow: 0 0 6px var(--accent);
+}
+
+/* Respect reduced-motion: collapse animations and transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+body {
+  font-family: var(--font);
+}
+
+/* Smooth color transitions when switching theme/tone at runtime. */
+body,
+.app-bg,
+.panel-bg,
+.elevated-bg,
+.app-fg,
+.muted,
+.accent,
+.accent-bg,
+.app-border {
+  transition:
+    background-color var(--anim-dur) ease,
+    color var(--anim-dur) ease,
+    border-color var(--anim-dur) ease;
+}
+
+/* Soft indeterminate progress used by running tool cards. */
+@keyframes soft-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+.soft-progress {
+  position: relative;
+  overflow: hidden;
+  height: 2px;
+  border-radius: 9999px;
+  background-color: var(--border);
+}
+.soft-progress::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  width: 40%;
+  border-radius: 9999px;
+  background-color: var(--accent);
+  animation: soft-progress 1.2s ease-in-out infinite;
+}
+
+/* Bootstrap-vue style indeterminate progress bar used as the busy indicator
+   while a prompt is being processed. The stripes slide continuously; the
+   reduced-motion media query collapses the animation globally. */
+.ui-progress {
+  position: relative;
+  overflow: hidden;
+  height: 6px;
+  border-radius: 9999px;
+  background-color: var(--border);
+}
+.ui-progress-bar {
+  position: absolute;
+  inset-block: 0;
+  width: 40%;
+  border-radius: 9999px;
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--accent) 0 8px,
+    color-mix(in srgb, var(--accent) 70%, transparent) 8px 16px
+  );
+  animation: ui-progress-slide 1.1s linear infinite;
+}
+@keyframes ui-progress-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(350%);
+  }
+}
+
+/* Busy visual (matrix rain / jarvis orb) ↔ conversation crossfade (the
+   visual never obscures messages: it leaves before the message list enters). */
+.busy-crossfade-enter-active,
+.busy-crossfade-leave-active {
+  transition:
+    opacity var(--anim-dur) ease,
+    transform var(--anim-dur) ease;
+}
+.busy-crossfade-enter-from,
+.busy-crossfade-leave-to {
+  opacity: 0;
+  transform: scale(0.98);
+}
+
+/* Theme-aware scrollbars. macOS overlay scrollbars are dark-on-dark in the
+   dark themes and vanish; explicit colors make them visible everywhere. */
+.overflow-y-auto {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.overflow-y-auto::-webkit-scrollbar {
+  width: 10px;
+}
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-clip: content-box;
+}
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background-color: var(--muted);
+}
+
+/* Jarvis busy indicator: a glowing blue plasma orb. Pure CSS, no
+   dependencies; the reduced-motion media query collapses it to a static glow. */
+.plasma-orb {
+  position: relative;
+  width: 130px;
+  height: 130px;
+  border-radius: 9999px;
+}
+.plasma-orb-core {
+  position: absolute;
+  inset: 16%;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 30%, #dff6ff, #3b82f6 45%, #1e3a8a 85%);
+  box-shadow:
+    0 0 28px 8px rgba(59, 130, 246, 0.5),
+    0 0 90px 34px rgba(96, 165, 250, 0.28);
+  animation: plasma-pulse 2.4s ease-in-out infinite;
+}
+.plasma-orb-blob {
+  position: absolute;
+  inset: 6%;
+  border-radius: 9999px;
+  filter: blur(12px);
+  mix-blend-mode: screen;
+  background: conic-gradient(
+    from 0deg,
+    rgba(96, 165, 250, 0.9),
+    rgba(59, 130, 246, 0.3) 30%,
+    transparent 55%,
+    rgba(125, 211, 252, 0.7) 75%,
+    rgba(96, 165, 250, 0.9)
+  );
+}
+.plasma-orb-blob-a {
+  animation: plasma-spin 7s linear infinite;
+}
+.plasma-orb-blob-b {
+  transform: scale(0.72);
+  animation: plasma-spin 9s linear infinite reverse;
+}
+.plasma-orb-blob-c {
+  transform: scale(0.5);
+  opacity: 0.85;
+  animation: plasma-spin 11s linear infinite;
+}
+.plasma-orb-ring {
+  position: absolute;
+  inset: -2%;
+  border-radius: 9999px;
+  border: 2px solid rgba(96, 165, 250, 0.4);
+  animation: plasma-ring 2.4s ease-in-out infinite;
+}
+@keyframes plasma-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+@keyframes plasma-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 0.85;
+  }
+}
+@keyframes plasma-ring {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.18);
+    opacity: 0.2;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .plasma-orb-core,
+  .plasma-orb-blob,
+  .plasma-orb-ring {
+    animation: none;
+  }
+}
+
+.app-bg {
+  background-color: var(--bg);
+}
+.panel-bg {
+  background-color: var(--bg-panel);
+}
+.elevated-bg {
+  background-color: var(--bg-elevated);
+}
+.muted-bg {
+  background-color: var(--muted);
+}
+.app-fg {
+  color: var(--fg);
+}
+.muted {
+  color: var(--muted);
+}
+.accent {
+  color: var(--accent);
+}
+.accent-bg {
+  background-color: var(--accent);
+}
+.accent-fg {
+  color: var(--accent-fg);
+}
+.app-border {
+  border-color: var(--border);
+}
