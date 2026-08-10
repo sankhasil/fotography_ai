@@ -54,12 +54,7 @@ const lines = computed(() => diffLines(props.diff.before.split('\n'), props.diff
 </script>
 
 <template>
-  <div
-    v-motion
-    :initial="{ opacity: 0, y: 6 }"
-    :enter="{ opacity: 1, y: 0, transition: { duration: 250 } }"
-    class="app-border panel-bg animate-in flex min-h-0 flex-col rounded-lg border"
-  >
+  <div class="app-border panel-bg animate-in flex min-h-0 flex-col rounded-lg border">
     <header class="app-border flex items-center justify-between gap-2 border-b px-3 py-1.5 text-xs">
       <code class="app-fg min-w-0 truncate font-semibold">{{ diff.file }}</code>
       <span class="flex shrink-0 gap-2 font-mono">

@@ -5,6 +5,7 @@ import { useConversation } from '@/composables/useConversation'
 import { useEventStream } from '@/composables/useEventStream'
 import { useModel } from '@/composables/useModel'
 import { useOpenCode } from '@/composables/useOpenCode'
+import { usePendingQuestion } from '@/composables/usePendingQuestion'
 import { useSession } from '@/composables/useSession'
 import { useWorkingDirectory } from '@/composables/useWorkingDirectory'
 
@@ -14,6 +15,7 @@ const workingDirectory = useWorkingDirectory()
 const eventStream = useEventStream()
 const conversation = useConversation()
 const model = useModel()
+const pendingQuestion = usePendingQuestion()
 
 eventStream.setOnEvent((event) => conversation.reduceEvent(event))
 
@@ -114,6 +116,12 @@ export function useAppStore() {
     sessionStatus: session.sessionStatus,
     sessionError: session.sessionError,
     sending: session.sending,
+    runningSessions: session.runningSessions,
+    pendingQuestion: pendingQuestion.pendingQuestion,
+    answering: pendingQuestion.answering,
+    questionError: pendingQuestion.questionError,
+    answerQuestion: pendingQuestion.answer,
+    dismissQuestion: pendingQuestion.dismiss,
     modelOptions: model.options,
     modelSelectedIndex: model.selectedIndex,
     modelSelectedLabel: model.selectedLabel,
@@ -121,6 +129,8 @@ export function useAppStore() {
     createSession: session.createSession,
     listSessions: session.listSessions,
     selectSession,
+    deleteSession: session.deleteSession,
+    deleteUISessions: session.deleteUISessions,
     abort: session.abort,
     sendPrompt,
     events: eventStream.events,

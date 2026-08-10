@@ -78,12 +78,7 @@ const lineCount = computed(() => (body.value ? body.value.split('\n').length : 0
 </script>
 
 <template>
-  <article
-    v-motion
-    :initial="{ opacity: 0, y: 6 }"
-    :enter="{ opacity: 1, y: 0, transition: { duration: 250 } }"
-    class="app-border panel-bg app-fg animate-in flex flex-col gap-1.5 rounded-lg border p-3"
-  >
+  <article class="app-border panel-bg app-fg animate-in flex flex-col gap-1.5 rounded-lg border p-3">
     <header class="flex items-center gap-2 text-xs">
       <UiSpinner
         v-if="part.state.status === 'pending' || part.state.status === 'running'"

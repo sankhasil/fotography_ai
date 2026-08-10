@@ -8,11 +8,6 @@
       "options": {
         "baseURL": "http://localhost:11434/v1",
         "apiKey": "ollama"
-      },
-      "models": {
-        "qwen2.5-coder:14b": {
-          "name": "Qwen2.5 Coder 14B"
-        }
       }
     }
   },

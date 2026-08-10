@@ -51,4 +51,43 @@ describe('session flow', () => {
     cy.get('button').contains('Cancel').click()
     cy.get('button').contains('Send').should('exist')
   })
+
+  it('deletes a session after confirming the wipe dialog', () => {
+    cy.get('textarea[aria-label="Prompt"]').type('Create a session that I will delete.')
+    cy.get('button').contains('Send').click()
+    cy.get('button').contains('Send', { timeout: 180000 }).should('exist')
+
+    // The active session box exposes the raw id; find its row's delete button.
+    cy.get('span[data-session-id]').first().invoke('attr', 'data-session-id').then((id) => {
+      cy.get(`button[data-session-id="${id}"][title^="Delete "]`).click({ force: true })
+
+      cy.get('[role="dialog"]').should('contain', 'clean all the context')
+      cy.get('[role="dialog"]').should('contain', 'Do you really want to continue?')
+      cy.get('[role="dialog"]').contains('Yes, delete').click()
+
+      // The matrix wipe overlay plays over the whole app.
+      cy.get('[aria-label="Deleting session"]', { timeout: 5000 }).should('exist')
+      cy.get('[aria-label="Deleting session"]', { timeout: 10000 }).should('not.exist')
+
+      // The deleted session is gone from the selector and the history list.
+      cy.get(`[data-session-id="${id}"]`).should('not.exist')
+    })
+  })
+
+  it('deletes all UI sessions after confirming the bulk dialog', () => {
+    cy.get('textarea[aria-label="Prompt"]').type('Create a session for bulk delete.')
+    cy.get('button').contains('Send').click()
+    cy.get('button').contains('Send', { timeout: 180000 }).should('exist')
+
+    cy.get('span[data-session-id]').first().invoke('attr', 'data-session-id').then((id) => {
+      cy.get('button[aria-label="Delete all UI sessions"]').click({ force: true })
+
+      cy.get('[role="dialog"]').should('contain', 'Delete all UI sessions')
+      cy.get('[role="dialog"]').should('contain', 'Do you really want to continue?')
+      cy.get('[role="dialog"]').contains('Yes, delete all').click()
+
+      cy.get('[aria-label="Deleting session"]', { timeout: 5000 }).should('exist')
+      cy.get(`[data-session-id="${id}"]`, { timeout: 10000 }).should('not.exist')
+    })
+  })
 })
