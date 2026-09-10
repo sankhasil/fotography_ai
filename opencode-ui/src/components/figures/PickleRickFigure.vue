@@ -1,20 +1,33 @@
 <script setup lang="ts">
 // Pickle Rick (from the Rick and Morty episode of the same name): a bumpy
-// green pickle wearing Rick's lab coat, with his angry brows, round glasses
-// and wide open-mouth grin. The character shown when Big Pickle is the
-// session model, in the cartoony theme only. Shared by the busy builder
+// green pickle wearing Rick's lab coat. The character shown when Big Pickle is
+// the session model, in the cartoony theme only. Shared by the busy builder
 // (BuilderScene slots it in) and the cartoony delete sweeper. `scene` drives
 // the per-phase motion, `hat` shows the hard hat.
+//
+// By default the face is drawn onto the pickle itself (brows, glasses, grin).
+// With `head="image"` — used by the busy builder only — that CSS face is
+// replaced by the Pickle Rick Generator head artwork (SVG) sitting on top of
+// the pickle body, with the speech bubble attached above it. The sweeper keeps
+// the default body face.
 
 defineProps<{
   scene?: string
   hat?: boolean
+  head?: 'css' | 'image'
 }>()
 </script>
 
 <template>
-  <div class="pickle-rick" :class="scene ? `pickle-rick--${scene}` : ''">
+  <div
+    class="pickle-rick"
+    :class="[scene ? `pickle-rick--${scene}` : '', head === 'image' ? 'pickle-rick--head' : '']"
+  >
     <span v-if="hat" class="pickle-hat">🪖</span>
+    <span v-if="head === 'image'" class="pickle-upper">
+      <span class="pickle-bubble" />
+      <span class="pickle-head" />
+    </span>
     <span class="pickle-arm pickle-arm--l">
       <span class="pickle-hand" />
     </span>
@@ -24,7 +37,7 @@ defineProps<{
     <span class="pickle-leg pickle-leg--l" />
     <span class="pickle-leg pickle-leg--r" />
     <div class="pickle-body">
-      <div class="pickle-face">
+      <div v-if="head !== 'image'" class="pickle-face">
         <span class="pickle-brow pickle-brow--l" />
         <span class="pickle-brow pickle-brow--r" />
         <span class="pickle-glass pickle-glass--l"><span class="pickle-pupil" /></span>
@@ -47,6 +60,8 @@ defineProps<{
   --pickle-deep: color-mix(in srgb, #3f6b2a 80%, var(--bg-panel));
   --coat: color-mix(in srgb, var(--bg-panel) 92%, var(--text));
   --coat-shade: color-mix(in srgb, var(--bg-elevated) 80%, var(--text));
+  --pickle-head: color-mix(in srgb, var(--text) 90%, var(--bg-panel));
+  --pickle-bubble: color-mix(in srgb, var(--bg-elevated) 92%, var(--accent));
 }
 .pickle-body {
   position: absolute;
@@ -287,12 +302,141 @@ defineProps<{
   }
 }
 
+/* Image-head mode: the Pickle Rick Generator head artwork replaces the CSS
+   face. The head sits on the pickle's shoulders (its bottom overlaps the body
+   top by a few px so the neck seam is hidden), and the speech bubble is
+   attached above the head. `scene` drives the head + bubble per phase. */
+.pickle-rick--head .pickle-upper {
+  position: absolute;
+  left: 50%;
+  bottom: 140px;
+  width: 76px;
+  height: 92px;
+  transform: translateX(-50%);
+  transform-origin: 50% 100%;
+  z-index: 2;
+}
+/* ponytail: the artwork is a single-color silhouette, so it is applied as a
+   mask and painted with a theme-mixed color to keep contrast on both tones.
+   The body face is dropped in this mode because two faces would read as a bug. */
+.pickle-head {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--pickle-head);
+  -webkit-mask: url('@/assets/pickle-rick-face.svg') center / contain no-repeat;
+  mask: url('@/assets/pickle-rick-face.svg') center / contain no-repeat;
+}
+.pickle-bubble {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 12px);
+  width: 52px;
+  height: 26px;
+  transform: translateX(-50%);
+  border-radius: 9999px;
+  background: var(--pickle-bubble);
+  box-shadow: inset 0 2px 0 color-mix(in srgb, var(--bg-panel) 35%, transparent);
+  animation: pickle-bubble-drift 2.8s ease-in-out infinite;
+}
+.pickle-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -9px;
+  left: 62%;
+  border: 9px solid transparent;
+  border-bottom: 0;
+  border-left: 0;
+  border-top-color: var(--pickle-bubble);
+}
+.pickle-rick--thinking.pickle-rick--head .pickle-upper {
+  animation: pickle-head-tilt 2.4s ease-in-out infinite;
+}
+.pickle-rick--checking.pickle-rick--head .pickle-upper {
+  animation: pickle-head-scan 2.2s ease-in-out infinite;
+}
+.pickle-rick--building.pickle-rick--head .pickle-upper {
+  animation: pickle-head-bob 0.9s ease-in-out infinite;
+}
+/* Building: no talk bubble — the hard hat takes its place above the head. */
+.pickle-rick--building.pickle-rick--head .pickle-bubble {
+  display: none;
+}
+.pickle-rick--responding.pickle-rick--head .pickle-upper {
+  animation: pickle-head-cheer 0.5s ease-in-out infinite;
+}
+.pickle-rick--responding.pickle-rick--head .pickle-bubble {
+  animation: pickle-bubble-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes pickle-head-tilt {
+  0%, 100% {
+    transform: translateX(-50%) rotate(-4deg);
+  }
+  50% {
+    transform: translateX(-50%) rotate(4deg);
+  }
+}
+@keyframes pickle-head-scan {
+  0%, 100% {
+    transform: translateX(-50%) translateY(0);
+  }
+  50% {
+    transform: translateX(-50%) translateY(2px) rotate(-2deg);
+  }
+}
+@keyframes pickle-head-bob {
+  0%, 100% {
+    transform: translateX(-50%) translateY(0) rotate(0);
+  }
+  50% {
+    transform: translateX(-50%) translateY(-3px) rotate(2deg);
+  }
+}
+@keyframes pickle-head-cheer {
+  0%, 100% {
+    transform: translateX(-50%) translateY(0) rotate(0);
+  }
+  50% {
+    transform: translateX(-50%) translateY(-6px) rotate(-5deg);
+  }
+}
+@keyframes pickle-bubble-drift {
+  0%, 100% {
+    transform: translateX(-50%) translateY(0);
+  }
+  50% {
+    transform: translateX(-50%) translateY(-3px);
+  }
+}
+@keyframes pickle-bubble-pop {
+  0% {
+    transform: translateX(-50%) scale(0);
+    opacity: 0;
+  }
+  70% {
+    transform: translateX(-50%) scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(-50%) scale(1);
+    opacity: 1;
+  }
+}
+/* The hard hat moves up to the head image; its own bob animation already
+   preserves the translateX centering. */
+.pickle-rick--head .pickle-hat {
+  top: -98px;
+  font-size: 18px;
+}
+
 /* Reduced motion: static figure pose. Matches the DeleteSweeper / PlasmaOrb
    convention. */
 @media (prefers-reduced-motion: reduce) {
   .pickle-arm,
   .pickle-body,
-  .pickle-hat {
+  .pickle-hat,
+  .pickle-upper,
+  .pickle-bubble {
     animation: none;
   }
 }

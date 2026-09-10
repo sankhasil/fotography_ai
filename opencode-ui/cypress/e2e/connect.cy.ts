@@ -2,8 +2,8 @@ describe('connect', () => {
   it('boots, connects to the console and shows the workspace controls', () => {
     cy.visit('/')
     cy.connectToConsole()
-    cy.get('#cwd').should('be.visible')
-    cy.contains('Working directory').should('exist')
+    cy.get('button').contains('Browse…').should('be.visible')
+    cy.contains('Folders').should('exist')
     cy.contains('History').should('exist')
   })
 

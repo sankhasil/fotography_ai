@@ -14,8 +14,8 @@
       "source": "nixpkg"
     },
     "github:NixOS/nixpkgs/nixpkgs-unstable": {
-      "last_modified": "2026-04-23T13:07:47Z",
-      "resolved": "github:NixOS/nixpkgs/01fbdeef22b76df85ea168fbfe1bfd9e63681b30?lastModified=1776949667"
+      "last_modified": "2026-09-09T03:01:28Z",
+      "resolved": "github:NixOS/nixpkgs/a391f95d4557d685fd8e5dc0d4b1f9271aa2f342?lastModified=1788922888"
     },
     "nodejs@22": {
       "last_modified": "2026-04-16T08:46:55Z",
@@ -122,6 +122,10 @@
           "store_path": "/nix/store/5bd4b8iifahkr4di8np8pirmcsmcvlgh-python3-3.11.15"
         }
       }
+    },
+    "uv": {
+      "resolved": "github:NixOS/nixpkgs/a391f95d4557d685fd8e5dc0d4b1f9271aa2f342#uv",
+      "source": "nixpkg"
     }
   }
 }

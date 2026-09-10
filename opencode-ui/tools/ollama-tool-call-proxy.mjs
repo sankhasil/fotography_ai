@@ -107,11 +107,25 @@ export function parseToolCalls(text) {
   return extractToolCalls(s)
 }
 
+// Detect plain-text commands that should be wrapped as bash tool calls.
+// ponytail: fallback for models (qwen) that emit commands as prose instead of JSON.
+export function detectPlainTextCommand(text, allowedToolNames) {
+  if (!text || !allowedToolNames.has('bash')) return []
+  const s = text.trim().replace(/```[\s\S]*?```/g, '').trim()
+  if (!s || s.length > 500) return []
+  if (s.startsWith('{') || s.startsWith('[')) return []
+  const commonCommands = /^(free|top|htop|ps|df|du|ls|cat|grep|find|echo|pwd|whoami|date|uname|uptime|mount|ifconfig|ip|netstat|ss|lsof|jobs|fg|bg|kill|killall|pkill|nice|nohup|screen|tmux|vim|nano|less|more|head|tail|wc|sort|uniq|cut|tr|sed|awk|curl|wget|ssh|scp|rsync|git|npm|yarn|pnpm|node|python|python3|pip|java|javac|make|cmake|gcc|g\+\+|clang|rustc|cargo|go|ruby|perl|php|lua|r|julia| octave|spark|docker|podman|kubectl|helm|terraform|ansible|aws|gcloud|az|doctl|heroku|vercel|netlify)(\s|$)/i
+  if (commonCommands.test(s)) {
+    return [{ name: 'bash', arguments: JSON.stringify({ command: s }) }]
+  }
+  return []
+}
+
 // Action verbs that signal the user wants a file/shell operation rather than a
 // chat reply. Best-effort steer for when to inject the tool-call nudge.
 const ACTION_HINTS = [
   'write', 'create', 'edit', 'modify', 'update', 'append', 'save', 'new file',
-  'delete', 'remove', 'rename', 'move',
+  'delete', 'remove', 'rename', 'move', 'todowrite',
   'run', 'execute', 'command', 'shell', 'bash', 'script',
   'read', 'show', 'cat', 'search', 'find', 'grep', 'list', 'ls',
 ]
@@ -177,7 +191,7 @@ function makeChunk({ id, created, model, delta, finishReason, usage }) {
 
 // Rewrite a buffered SSE stream when the assistant produced a bare tool-call
 // JSON object. Returns the rewritten stream, or null to pass through unchanged.
-function rewriteStream(body, hadTools) {
+function rewriteStream(body, hadTools, allowedToolNames) {
   if (!hadTools) return null
   const lines = body.split('\n')
   let content = ''
@@ -208,7 +222,10 @@ function rewriteStream(body, hadTools) {
   }
 
   if (toolCallSeen) return null
-  const toolCalls = parseToolCalls(content)
+  let toolCalls = parseToolCalls(content).filter(tc => allowedToolNames.has(tc.name))
+  if (toolCalls.length === 0) {
+    toolCalls = detectPlainTextCommand(content, allowedToolNames)
+  }
   if (toolCalls.length === 0) {
     if (process.env.DEBUG_TOOLS === '1') {
       log(`skip rewrite: content not a bare tool-call object. content=${JSON.stringify(content)}`)
@@ -239,12 +256,15 @@ function rewriteStream(body, hadTools) {
 }
 
 // Rewrite a non-streamed JSON response the same way.
-function rewriteJson(body, hadTools) {
+function rewriteJson(body, hadTools, allowedToolNames) {
   if (!hadTools || !body.choices?.length) return null
   const message = body.choices[0].message
   if (message?.tool_calls?.length) return null
   if (typeof message?.content !== 'string') return null
-  const toolCalls = parseToolCalls(message.content)
+  let toolCalls = parseToolCalls(message.content).filter(tc => allowedToolNames.has(tc.name))
+  if (toolCalls.length === 0) {
+    toolCalls = detectPlainTextCommand(message.content, allowedToolNames)
+  }
   if (toolCalls.length === 0) return null
   message.content = null
   message.tool_calls = toolCalls.map((tc) => ({
@@ -267,6 +287,7 @@ const server = createServer(async (req, res) => {
     for await (const chunk of req) raw += chunk
     const requestBody = JSON.parse(raw)
     const hadTools = Array.isArray(requestBody.tools) && requestBody.tools.length > 0
+    const allowedToolNames = new Set((requestBody.tools ?? []).map(t => t.function?.name ?? t.name).filter(Boolean))
     const streaming = requestBody.stream === true
 
     logTools(requestBody)
@@ -301,13 +322,13 @@ const server = createServer(async (req, res) => {
         res.end()
       } else {
         const upstreamBody = await upstream.text()
-        const rewritten = rewriteStream(upstreamBody, hadTools)
+        const rewritten = rewriteStream(upstreamBody, hadTools, allowedToolNames)
         rewrote = rewritten !== null
         res.end(rewritten ?? upstreamBody)
       }
     } else {
       const upstreamBody = JSON.parse(await upstream.text())
-      const rewritten = rewriteJson(upstreamBody, hadTools)
+      const rewritten = rewriteJson(upstreamBody, hadTools, allowedToolNames)
       rewrote = rewritten !== null
       res.statusCode = upstream.status
       res.setHeader('content-type', 'application/json')

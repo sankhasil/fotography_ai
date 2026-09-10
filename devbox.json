@@ -3,6 +3,7 @@
   "packages": [
     "nodejs@22",
     "python@3.11",
+    "uv",
     "git",
     "ffmpeg",
     "curl"
@@ -14,32 +15,17 @@
   },
   "shell": {
     "init_hook": [
-      "echo '🚀 Devbox AI environment ready'",
+      "echo '🚀 DupeScope AI environment ready'",
       "node -v",
-      "npm -v",
       "python --version",
       "[ -f .env ] && set -a && source .env && set +a",
-      "echo '🧩 Enter backend directory'",
-      "cd dupescope-backend",
-      "echo '🧪 Create venv if missing'",
-      "if [ ! -d .venv ]; then python -m venv .venv; fi",
-      "echo '🖥️  Activate backend venv'",
-      "source .venv/bin/activate",
-      "echo '📥 Upgrade pip'",
-      "python -m pip install --upgrade pip",
-      "echo '💾 Install backend requirements'",
-      "if [ -f requirements.txt ]; then pip install -r requirements.txt; fi",
-      "echo '📦 Backend ready (dupescope-backend)'",
-
       "echo ''",
-      "echo '🐳 Docker stack commands available:'",
-      "echo '   devbox run stack start local     → WebUI + local Ollama + Search + Pipelines'",
-      "echo '   devbox run stack start full      → All services'",
-      "echo '   devbox run stack stop            → Stop everything'",
-      "echo '   devbox run stack status          → Show running containers'",
-      "echo '   devbox run stack help            → All commands'",
+      "echo '📦 Commands:'",
+      "echo '   devbox run start        → Backend (port 5000) + Frontend (port 5173)'",
+      "echo '   devbox run test         → Run e2e tests'",
+      "echo '   devbox run checkai      → Check Ollama + AI prerequisites'",
+      "echo '   devbox run stack help   → Docker stack (Open WebUI, SearXNG, etc.)'",
       "echo ''",
-
       "start()    { devbox run start; }",
       "test()     { devbox run test; }",
       "stack()    { devbox run stack \"$@\"; }",
@@ -58,6 +44,7 @@
         "echo 'Starting Python backend...'",
         "source dupescope-backend/.venv/bin/activate",
         "pkill -f dupescope-backend/server.py || true",
+        "if curl -sf --max-time 2 http://localhost:11434/api/tags >/dev/null 2>&1; then echo '✓ Ollama already running'; else echo '⚠ Ollama not running (AI chat unavailable)'; fi",
         "python dupescope-backend/server.py"
       ],
 

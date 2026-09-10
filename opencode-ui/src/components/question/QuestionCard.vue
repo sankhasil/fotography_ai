@@ -56,7 +56,7 @@ function submit(): void {
 </script>
 
 <template>
-  <article class="panel-bg app-border app-fg animate-in flex w-full max-w-lg flex-col gap-4 rounded-xl border p-5 shadow-lg">
+  <article class="panel-bg app-border app-fg animate-in m-auto flex w-full max-w-lg flex-col gap-4 rounded-xl border p-5 shadow-lg">
     <header class="flex items-center gap-2">
       <UiSpinner v-if="submitting" size="sm" />
       <h3 class="text-sm font-semibold">Question from the agent</h3>

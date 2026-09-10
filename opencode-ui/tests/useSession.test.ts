@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { OpencodeClient, Session } from '@opencode-ai/sdk/client'
 
+import { SESSION_LIMIT } from '@/composables/useSession'
+
 function createMockClient() {
   return {
     session: {
@@ -14,11 +16,11 @@ function createMockClient() {
   }
 }
 
-function session(id: string): Session {
+function session(id: string, directory = '/workspace'): Session {
   return {
     id,
     projectID: 'proj',
-    directory: '/workspace',
+    directory,
     title: '',
     version: '1',
     time: { created: 0, updated: 0 },
@@ -47,13 +49,16 @@ describe('useSession', () => {
     mock.session.list.mockResolvedValue({ data: [session('s1')], error: undefined })
     mock.session.status.mockResolvedValue({ data: { s1: { type: 'busy' } }, error: undefined })
 
-    const created = await store.createSession(client, '/workspace')
+    const outcome = await store.createSession(client, '/workspace')
 
     expect(mock.session.create).toHaveBeenCalledWith({ query: { directory: '/workspace' } })
-    expect(created.id).toBe('s1')
-    expect(store.activeSession.value?.id).toBe('s1')
-    expect(store.sessions.value).toEqual([session('s1')])
-    expect(store.provenance.isUISession('s1')).toBe(true)
+    expect(outcome).toMatchObject({ kind: 'created' })
+    if (outcome.kind === 'created') {
+      expect(outcome.session.id).toBe('s1')
+      expect(store.activeSession.value?.id).toBe('s1')
+      expect(store.sessionsFor('/workspace')).toEqual([session('s1')])
+      expect(store.provenance.isUISession('s1')).toBe(true)
+    }
     store.clearSession()
   })
 
@@ -177,7 +182,6 @@ describe('useSession', () => {
     const store = await load()
     const mock = createMockClient()
     const client = mock as unknown as OpencodeClient
-    mock.session.create.mockResolvedValue({ data: session('s1'), error: undefined })
     mock.session.list.mockResolvedValue({
       data: [session('s1'), session('cli-session')],
       error: undefined,
@@ -186,7 +190,7 @@ describe('useSession', () => {
       data: { s1: { type: 'idle' }, 'cli-session': { type: 'busy' } },
       error: undefined,
     })
-    await store.createSession(client, null)
+
     await store.listSessions(client, null)
 
     expect(store.runningSessions.value.has('cli-session')).toBe(true)
@@ -204,10 +208,10 @@ describe('useSession', () => {
     mock.session.delete.mockResolvedValue({ data: undefined, error: undefined })
     await store.createSession(client, '/workspace')
 
-    await store.deleteSession(client, 's1')
+    await store.deleteSession(client, '/workspace', 's1')
 
     expect(mock.session.delete).toHaveBeenCalledWith({ path: { id: 's1' } })
-    expect(store.sessions.value).toEqual([])
+    expect(store.sessionsFor('/workspace')).toEqual([])
     expect(store.activeSession.value).toBeNull()
     expect(store.provenance.isUISession('s1')).toBe(false)
   })
@@ -222,8 +226,8 @@ describe('useSession', () => {
     await store.createSession(client, null)
     mock.session.delete.mockResolvedValue({ data: undefined, error: new Error('gone') })
 
-    await expect(store.deleteSession(client, 's1')).rejects.toThrow('gone')
-    expect(store.sessions.value).toEqual([session('s1')])
+    await expect(store.deleteSession(client, null, 's1')).rejects.toThrow('gone')
+    expect(store.sessionsFor(null)).toEqual([session('s1')])
     store.clearSession()
   })
 
@@ -237,9 +241,78 @@ describe('useSession', () => {
     mock.session.delete.mockResolvedValue({ data: undefined, error: undefined })
     await store.createSession(client, null)
 
-    await store.deleteSession(client, 'other')
+    await store.deleteSession(client, null, 'other')
 
     expect(store.activeSession.value?.id).toBe('s1')
+    store.clearSession()
+  })
+
+  it('refuses to create a session past the per-folder limit and offers the pool', async () => {
+    const store = await load()
+    const mock = createMockClient()
+    const client = mock as unknown as OpencodeClient
+    mock.session.create.mockResolvedValue({ data: session('s1'), error: undefined })
+    mock.session.list.mockResolvedValue({ data: [], error: undefined })
+    mock.session.status.mockResolvedValue({ data: { s1: { type: 'idle' } }, error: undefined })
+    // Pre-seed a full pool for the folder (the server owns these sessions).
+    const fullPool = Array.from({ length: SESSION_LIMIT }, (_, i) => session(`s${i}`))
+    for (const s of fullPool) store.provenance.markAsUI(s.id)
+    mock.session.list.mockResolvedValue({ data: fullPool, error: undefined })
+    await store.listSessions(client, '/workspace')
+
+    const outcome = await store.createSession(client, '/workspace')
+
+    expect(outcome).toMatchObject({ kind: 'limit', folder: '/workspace' })
+    if (outcome.kind === 'limit') {
+      expect(outcome.sessions).toHaveLength(SESSION_LIMIT)
+    }
+    store.clearSession()
+  })
+
+  it('frees a session via replaceAndCreate and creates a fresh one', async () => {
+    const store = await load()
+    const mock = createMockClient()
+    const client = mock as unknown as OpencodeClient
+    // Server state: a full pool; deletes remove the row, creates append.
+    const serverSessions = Array.from({ length: SESSION_LIMIT }, (_, i) => session(`s${i}`))
+    mock.session.list.mockImplementation(async () => ({ data: serverSessions, error: undefined }))
+    mock.session.status.mockResolvedValue({ data: {}, error: undefined })
+    mock.session.delete.mockImplementation(async ({ path }: { path: { id: string } }) => {
+      const index = serverSessions.findIndex((s) => s.id === path.id)
+      if (index !== -1) serverSessions.splice(index, 1)
+      return { data: undefined, error: undefined }
+    })
+    mock.session.create.mockImplementation(async () => {
+      const created = session('s-new')
+      serverSessions.push(created)
+      return { data: created, error: undefined }
+    })
+    await store.listSessions(client, '/workspace')
+
+    const created = await store.replaceAndCreate(client, '/workspace', 's0')
+
+    expect(mock.session.delete).toHaveBeenCalledWith({ path: { id: 's0' } })
+    expect(created.id).toBe('s-new')
+    expect(store.activeSession.value?.id).toBe('s-new')
+    expect(store.sessionsFor('/workspace').map((s) => s.id)).toHaveLength(SESSION_LIMIT)
+    expect(store.sessionsFor('/workspace').map((s) => s.id)).not.toContain('s0')
+    expect(store.provenance.isUISession('s0')).toBe(false)
+    expect(store.provenance.isUISession('s-new')).toBe(true)
+    store.clearSession()
+  })
+
+  it('restores the most recently updated session when activating a folder', async () => {
+    const store = await load()
+    const mock = createMockClient()
+    const client = mock as unknown as OpencodeClient
+    const older = session('s-old')
+    const newer = { ...session('s-newer'), time: { created: 0, updated: 100 } }
+    mock.session.list.mockResolvedValue({ data: [older, newer], error: undefined })
+    mock.session.status.mockResolvedValue({ data: {}, error: undefined })
+
+    await store.activateFolder(client, '/workspace')
+
+    expect(store.activeSession.value?.id).toBe('s-newer')
     store.clearSession()
   })
 
@@ -247,7 +320,6 @@ describe('useSession', () => {
     const store = await load()
     const mock = createMockClient()
     const client = mock as unknown as OpencodeClient
-    mock.session.create.mockResolvedValue({ data: session('s1'), error: undefined })
     // s2 is mid-run on the server (busy), so it must survive the bulk delete.
     mock.session.status.mockResolvedValue({
       data: { s1: { type: 'idle' }, s2: { type: 'busy' } },
@@ -262,14 +334,15 @@ describe('useSession', () => {
       if (index !== -1) serverSessions.splice(index, 1)
       return { data: undefined, error: undefined }
     })
-    await store.createSession(client, '/workspace')
+    await store.listSessions(client, '/workspace')
+    store.provenance.markAsUI('s1')
     store.provenance.markAsUI('s2')
 
-    await store.deleteUISessions(client)
+    await store.deleteUISessions(client, '/workspace')
 
     const deletedIds = mock.session.delete.mock.calls.map((call) => call[0].path.id)
     expect(deletedIds).toEqual(['s1'])
-    expect(store.sessions.value.map((s) => s.id)).toEqual(['s2', 'cli-session'])
+    expect(store.sessionsFor('/workspace').map((s) => s.id)).toEqual(['s2', 'cli-session'])
     expect(store.activeSession.value).toBeNull()
     expect(store.provenance.isUISession('s1')).toBe(false)
     expect(store.provenance.isUISession('s2')).toBe(true)
@@ -280,14 +353,13 @@ describe('useSession', () => {
     const store = await load()
     const mock = createMockClient()
     const client = mock as unknown as OpencodeClient
-    mock.session.create.mockResolvedValue({ data: session('s1'), error: undefined })
     mock.session.list.mockResolvedValue({ data: [session('s1')], error: undefined })
     mock.session.status.mockResolvedValue({ data: { s1: { type: 'idle' } }, error: undefined })
-    await store.createSession(client, null)
+    await store.listSessions(client, null)
+    store.provenance.markAsUI('s1')
     mock.session.delete.mockResolvedValue({ data: undefined, error: new Error('gone') })
 
-    await expect(store.deleteUISessions(client)).rejects.toThrow('gone')
-    expect(store.sessions.value).toEqual([session('s1')])
+    await expect(store.deleteUISessions(client, null)).rejects.toThrow('gone')
     store.clearSession()
   })
 })

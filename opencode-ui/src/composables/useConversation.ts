@@ -1,6 +1,9 @@
 import { reactive, ref } from 'vue'
 import type { Event, FileDiff, Message, Part } from '@opencode-ai/sdk/client'
 
+import { advance, observe, completeTaskPct, type StageKey } from '@/composables/useTaskPct'
+import { useTokenUsage } from '@/composables/useTokenUsage'
+
 export interface MessageRecord {
   info: Message | null
   parts: Part[]
@@ -39,6 +42,9 @@ function upsertRecord(messageID: string): MessageRecord {
 function upsertMessage(message: Message): void {
   const record = upsertRecord(message.id)
   record.info = message
+  if (message.sessionID) {
+    useTokenUsage().accumulateTokens(message.sessionID, message)
+  }
 }
 
 function upsertPart(part: Part, delta?: string): void {
@@ -68,14 +74,50 @@ function removeMessage(messageID: string): void {
   messages.delete(messageID)
 }
 
-function appendPartDelta(messageID: string, partID: string, field: string, delta: string): void {
+// Returns the part type when a text field was appended, so the reducer can
+// feed the delta into the right progress band.
+function appendPartDelta(
+  messageID: string,
+  partID: string,
+  field: string,
+  delta: string,
+): string | null {
   const record = messages.get(messageID)
-  if (!record) return
+  if (!record) return null
   const index = record.parts.findIndex((part) => part.id === partID)
-  if (index === -1) return
+  if (index === -1) return null
   const current = record.parts[index]
   if (field === 'text' && (current.type === 'text' || current.type === 'reasoning')) {
     record.parts[index] = { ...current, text: current.text + delta }
+    return current.type
+  }
+  return null
+}
+
+// Map a real stream event to the progress phase it signals, so the busy clock
+// advances on actual work instead of a timer. Text only counts as "streaming"
+// once it belongs to an assistant message — the user's echoed prompt is text
+// too and must not light up the responding phase.
+function stageForEvent(
+  event: Event | PartDeltaEvent,
+): { sessionID: string; stage: StageKey } | null {
+  switch (event.type) {
+    case 'message.part.updated': {
+      const part = event.properties.part
+      if (part.type === 'reasoning') return { sessionID: part.sessionID, stage: 'reasoning' }
+      if (part.type === 'tool') return { sessionID: part.sessionID, stage: 'searching' }
+      if (
+        part.type === 'text' &&
+        messages.get(part.messageID)?.info?.role === 'assistant'
+      ) {
+        return { sessionID: part.sessionID, stage: 'streaming' }
+      }
+      return null
+    }
+    case 'session.diff':
+      return { sessionID: event.properties.sessionID, stage: 'applying' }
+    default:
+      return null
   }
 }
 
@@ -88,14 +130,29 @@ function reduceEvent(event: Event | PartDeltaEvent): void {
     case 'message.part.updated':
       upsertPart(event.properties.part, event.properties.delta)
       break
-    case 'message.part.delta':
-      appendPartDelta(
+    case 'message.part.delta': {
+      const partType = appendPartDelta(
         event.properties.messageID,
         event.properties.partID,
         event.properties.field,
         event.properties.delta,
       )
+      // The delta stream is the only in-flight token signal; feed it to the
+      // progress clock so the busy pies fill during reasoning and streaming
+      // instead of waiting for each phase's terminal part.updated. Reasoning
+      // belongs to the assistant by construction; text only counts once it is
+      // an assistant answer (the echoed user turn must not light up streaming).
+      if (event.properties.field === 'text' && partType === 'reasoning') {
+        advance(event.properties.sessionID, 'reasoning', event.properties.delta.length)
+      } else if (
+        event.properties.field === 'text' &&
+        partType === 'text' &&
+        messages.get(event.properties.messageID)?.info?.role === 'assistant'
+      ) {
+        advance(event.properties.sessionID, 'streaming', event.properties.delta.length)
+      }
       break
+    }
     case 'message.part.removed':
       removePart(event.properties.messageID, event.properties.partID)
       break
@@ -105,7 +162,13 @@ function reduceEvent(event: Event | PartDeltaEvent): void {
     case 'session.diff':
       diffs.set(event.properties.sessionID, event.properties.diff)
       break
+    case 'session.idle':
+      // End of the run: pop the busy clock to 100% for this session.
+      completeTaskPct(event.properties.sessionID)
+      break
   }
+  const phase = stageForEvent(event)
+  if (phase) observe(phase.sessionID, phase.stage)
 }
 
 function feedResult(info: Message, parts: Part[]): void {

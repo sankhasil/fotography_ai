@@ -115,6 +115,49 @@ describe('useConversation event reducer', () => {
     expect(conversation.diffsFor('s1')).toEqual([diff])
   })
 
+  it('advances the shared clock from events and completes on session idle', async () => {
+    // Regression: real run events must drive the busy percentage. A tool part
+    // lands on the searching floor, session.diff on applying, and session.idle
+    // finishes the clock at 100 instead of freezing at the streaming floor.
+    const conversation = await load()
+    const { pct, startTaskPct } = await import('@/composables/useTaskPct')
+    startTaskPct('s1')
+
+    conversation.reduceEvent({
+      type: 'message.part.updated',
+      properties: {
+        part: {
+          id: 'p1',
+          sessionID: 's1',
+          messageID: 'm1',
+          type: 'tool',
+          callID: 't1',
+          tool: 'shell',
+          state: { status: 'pending', input: {}, raw: '' },
+        },
+        delta: '',
+      },
+    })
+    expect(pct.value).toBe(25)
+
+    conversation.reduceEvent({
+      type: 'session.diff',
+      properties: { sessionID: 's1', diff: [] },
+    })
+    expect(pct.value).toBe(50)
+
+    conversation.reduceEvent({ type: 'session.idle', properties: { sessionID: 's1' } })
+    expect(pct.value).toBe(100)
+  })
+
+  it('ignores session idle from other sessions', async () => {
+    const conversation = await load()
+    const { pct, startTaskPct } = await import('@/composables/useTaskPct')
+    startTaskPct('s1')
+    conversation.reduceEvent({ type: 'session.idle', properties: { sessionID: 's2' } })
+    expect(pct.value).toBe(0)
+  })
+
   it('replaces an entire session on switch', async () => {
     const conversation = await load()
     conversation.reduceEvent(textEvent('m1', 'p1', 'old'))

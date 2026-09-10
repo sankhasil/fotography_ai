@@ -29,6 +29,9 @@ RST='\033[0m'
 COMMAND="${1:-help}"
 ARG="${2:-}"
 
+# ── Compose file location ─────────────────────────────────────────────────────
+COMPOSE_FILE="-f open-webui/compose.yml"
+
 # ── Service URLs ──────────────────────────────────────────────────────────────
 declare -A URLS=(
   [open-webui]="http://localhost:3000"
@@ -137,8 +140,22 @@ cmd_start() {
   echo -e "  Starting: ${CYN}${label}${RST}"
   echo ""
 
+  # Check if Ollama is already running locally
+  if curl -sf --max-time 2 "http://localhost:11434/api/tags" >/dev/null 2>&1; then
+    echo -e "  ${GRN}✓ Ollama already running locally${RST}  (:11434)"
+    if [[ "$preset" == "local" || "$preset" == "full" || "$preset" == "images" || "$preset" == "automation" || "$preset" == "monitoring" ]]; then
+      echo -e "  ${DIM}→ Using local Ollama (no Docker Ollama needed)${RST}"
+    fi
+  else
+    echo -e "  ${YEL}⚠ Ollama not running locally${RST}"
+    if [[ "$preset" == "local" || "$preset" == "full" ]]; then
+      echo -e "  ${DIM}→ Start Ollama manually or use 'devbox run stack start docker'${RST}"
+    fi
+  fi
+  echo ""
+
   # shellcheck disable=SC2086
-  docker compose $profiles up -d --remove-orphans
+  docker compose $COMPOSE_FILE $profiles up -d --remove-orphans
 
   wait_for_webui
   print_urls
@@ -154,7 +171,7 @@ cmd_stop() {
   echo ""
 
   # shellcheck disable=SC2086
-  docker compose $STOP_ALL down --remove-orphans
+  docker compose $COMPOSE_FILE $STOP_ALL down --remove-orphans
 
   echo ""
   echo -e "  ${GRN}✓ All services stopped.${RST}"
@@ -200,7 +217,7 @@ cmd_logs() {
     docker logs -f "$service" 2>&1
   else
     # All running dupeScope containers
-    docker compose \
+    docker compose $COMPOSE_FILE \
       --profile local --profile docker \
       --profile search --profile pipelines \
       logs -f --tail=50 2>&1
@@ -213,7 +230,7 @@ cmd_pull() {
   echo ""
 
   # shellcheck disable=SC2086
-  docker compose $STOP_ALL pull
+  docker compose $COMPOSE_FILE $STOP_ALL pull
 
   echo ""
   echo -e "  ${GRN}✓ All images updated.${RST}"

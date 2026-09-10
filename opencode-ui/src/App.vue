@@ -7,6 +7,7 @@ import EventPanel from '@/components/layout/EventPanel.vue'
 import InputPanel from '@/components/layout/InputPanel.vue'
 import OutputPanel from '@/components/layout/OutputPanel.vue'
 import StatusBar from '@/components/layout/StatusBar.vue'
+import TokenWarning from '@/components/TokenWarning.vue'
 import { useAppStore } from '@/composables/useAppStore'
 import { useTheme } from '@/composables/useTheme'
 
@@ -49,5 +50,6 @@ onMounted(() => {
       :last-event-at="lastEventAt"
       @toggle-events="eventsVisible = !eventsVisible"
     />
+    <TokenWarning />
   </div>
 </template>

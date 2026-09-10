@@ -50,24 +50,29 @@ echo -e "${GRN}✓ Ollama installed${RST}  ${OLLAMA_VER}"
 if curl -sf --max-time 2 "http://localhost:${OLLAMA_PORT}/api/tags" >/dev/null 2>&1; then
   echo -e "${GRN}✓ Ollama server already running${RST}  (:${OLLAMA_PORT})"
 else
-  echo -e "${YEL}… Ollama server not running — starting it${RST}"
-  nohup ollama serve >/tmp/ollama-devbox.log 2>&1 &
-  disown
+  echo -e "${YEL}… Ollama server not running.${RST}"
+  read -rp "  Start Ollama server now? [y/N] " _ollama_start
+  if [[ "$_ollama_start" =~ ^[Yy]$ ]]; then
+    nohup ollama serve >/tmp/ollama-devbox.log 2>&1 &
+    disown
 
-  echo -n "  Waiting for Ollama to become healthy "
-  waited=0
-  until curl -sf --max-time 2 "http://localhost:${OLLAMA_PORT}/api/tags" >/dev/null 2>&1; do
-    echo -n "."
-    sleep 1
-    waited=$((waited + 1))
-    if [ "$waited" -ge "$OLLAMA_HEALTH_TIMEOUT" ]; then
-      echo ""
-      echo -e "${RED}✗ Ollama did not start within ${OLLAMA_HEALTH_TIMEOUT}s.${RST}"
-      echo "  Check the log: /tmp/ollama-devbox.log"
-      exit 1
-    fi
-  done
-  echo -e " ${GRN}ready ✓${RST}"
+    echo -n "  Waiting for Ollama to become healthy "
+    waited=0
+    until curl -sf --max-time 2 "http://localhost:${OLLAMA_PORT}/api/tags" >/dev/null 2>&1; do
+      echo -n "."
+      sleep 1
+      waited=$((waited + 1))
+      if [ "$waited" -ge "$OLLAMA_HEALTH_TIMEOUT" ]; then
+        echo ""
+        echo -e "${RED}✗ Ollama did not start within ${OLLAMA_HEALTH_TIMEOUT}s.${RST}"
+        echo "  Check the log: /tmp/ollama-devbox.log"
+        exit 1
+      fi
+    done
+    echo -e " ${GRN}ready ✓${RST}"
+  else
+    echo -e "${YEL}⚠ Skipping Ollama server start. Some features may not work.${RST}"
+  fi
 fi
 
 # ── 3. Qwen model available? ────────────────────────────────────────────────
@@ -89,18 +94,28 @@ if command -v opencode >/dev/null 2>&1; then
   OC_VER="$(opencode --version 2>/dev/null)"
   echo -e "${GRN}✓ OpenCode already installed${RST}  ${OC_VER}"
 else
-  echo -e "${YEL}… Installing OpenCode${RST}"
-  npm install  opencode-ai
-  echo -e "${GRN}✓ OpenCode installed${RST}"
+  echo -e "${YEL}⚠ OpenCode is not installed.${RST}"
+  read -rp "  Install OpenCode now? [y/N] " _oc_install
+  if [[ "$_oc_install" =~ ^[Yy]$ ]]; then
+    npm install opencode-ai
+    echo -e "${GRN}✓ OpenCode installed${RST}"
+  else
+    echo -e "${YEL}⚠ Skipping OpenCode install. CLI features won't be available.${RST}"
+  fi
 fi
 
 # ── 5. Ponytail installed? ──────────────────────────────────────────────────
 if npm ls -g --depth=0 2>/dev/null | grep -q "opencode-ponytail"; then
   echo -e "${GRN}✓ Ponytail already installed${RST}"
 else
-  echo -e "${YEL}… Installing Ponytail${RST}"
-  npm install -g opencode-ponytail
-  echo -e "${GRN}✓ Ponytail installed${RST}"
+  echo -e "${YEL}⚠ Ponytail is not installed.${RST}"
+  read -rp "  Install Ponytail now? [y/N] " _pt_install
+  if [[ "$_pt_install" =~ ^[Yy]$ ]]; then
+    npm install -g opencode-ponytail
+    echo -e "${GRN}✓ Ponytail installed${RST}"
+  else
+    echo -e "${YEL}⚠ Skipping Ponytail install. Agent skills won't be available.${RST}"
+  fi
 fi
 
 echo "─────────────────────────────────────────────"

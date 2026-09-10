@@ -1,0 +1,26 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "ollama/hhao/qwen2.5-coder-tools:7b",
+  "small_model": "ollama/hhao/qwen2.5-coder-tools:7b",
+  "share": "disabled",
+  "provider": {
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama (tool-call proxy)",
+      "options": {
+        "baseURL": "http://localhost:4198/v1",
+        "apiKey": "ollama"
+      },
+      "models": {
+        "hhao/qwen2.5-coder-tools:7b": {
+          "name": "Qwen2.5 Coder Tools 7B"
+        }
+      }
+    }
+  },
+  "skills": {
+    "paths": [
+      "/Users/A200173944/PersonalCodes/fotography_ai/open-code/.agents/skills"
+    ]
+  }
+}

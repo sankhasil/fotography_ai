@@ -244,33 +244,6 @@ def _fallback_quality(path: Path) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SSIM CONFIRMATION
-# ─────────────────────────────────────────────────────────────────────────────
-
-def ssim_similarity(path_a: Path, path_b: Path, size: int = 256) -> float:
-    """
-    Structural Similarity Index between two images.
-    1.0 = identical, > 0.85 = near-duplicate.
-    Used to confirm pHash candidates and remove false positives.
-    """
-    if not SKIMAGE:
-        return 1.0
-    try:
-        img_a = open_image(path_a, size)
-        img_b = open_image(path_b, size)
-        if img_a is None or img_b is None:
-            return 0.0
-        img_a = img_a.resize((size, size), Image.LANCZOS).convert("L")
-        img_b = img_b.resize((size, size), Image.LANCZOS).convert("L")
-        score, _ = ssim(np.array(img_a, dtype=np.float32),
-                        np.array(img_b, dtype=np.float32),
-                        full=True, data_range=255)
-        return float(score)
-    except Exception:
-        return 0.0
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # HASHING
 # ─────────────────────────────────────────────────────────────────────────────
 

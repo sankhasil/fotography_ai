@@ -1,0 +1,24 @@
+# DupeScope configuration
+
+[quality]
+quality_metric = "topiq_nr"
+quality_weight = 0.4
+max_image_size = 1024
+ssim_threshold = 0.8
+hash_threshold = 10
+
+[aesthetic]
+aesthetic_model = "laion_ViT-L-14"
+aesthetic_weight = 0.35
+
+[faces]
+face_model = "buffalo_l"
+face_weight = 0.25
+
+[pipeline]
+device = "cpu"
+keep_threshold = 5.5
+burst_gap_seconds = 3
+
+[cache]
+cache_dir = ".dupescope"

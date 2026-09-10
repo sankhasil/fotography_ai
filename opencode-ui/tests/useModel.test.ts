@@ -21,7 +21,7 @@ async function load() {
 }
 
 describe('useModel', () => {
-  it('lists only the free OpenCode Zen models', async () => {
+  it('lists free Zen models plus local ollama models', async () => {
     const store = await load()
     const mock = createMockClient()
     const client = mock as unknown as OpencodeClient
@@ -44,6 +44,11 @@ describe('useModel', () => {
             name: 'Ollama (local)',
             models: { 'qwen2.5-coder:14b': { id: 'qwen2.5-coder:14b', name: 'Qwen 2.5 Coder' } },
           },
+          {
+            id: 'ollama-qwen',
+            name: 'Qwen2.5 (tool-wrapped)',
+            models: { 'qwen2.5-coder:14b': { id: 'qwen2.5-coder:14b', name: 'Qwen 2.5 Coder' } },
+          },
         ],
       },
       error: undefined,
@@ -51,9 +56,19 @@ describe('useModel', () => {
 
     await store.refresh(client)
 
-    // Non-OpenCode Zen providers are excluded.
-    expect(store.options.value.map((o) => o.providerID)).toEqual(['opencode', 'opencode'])
-    expect(store.options.value.map((o) => o.modelID)).toEqual(['big-pickle', 'north-mini-code-free'])
+    // Providers outside the curated set (free Zen + local ollama providers) are excluded.
+    expect(store.options.value.map((o) => o.providerID)).toEqual([
+      'opencode',
+      'opencode',
+      'ollama',
+      'ollama-qwen',
+    ])
+    expect(store.options.value.map((o) => o.modelID)).toEqual([
+      'big-pickle',
+      'north-mini-code-free',
+      'qwen2.5-coder:14b',
+      'qwen2.5-coder:14b',
+    ])
   })
 
   it('selects a model by index and persists it', async () => {

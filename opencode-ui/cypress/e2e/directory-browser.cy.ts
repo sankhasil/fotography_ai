@@ -62,6 +62,7 @@ describe('directory browser', () => {
     // from a prior test never leaks into this one. (Exposed on window because
     // Cypress specs can't resolve the `@/` alias.)
     cy.window().then((win) => (win as unknown as { __resetDirectoryTree?: () => void }).__resetDirectoryTree?.())
+    cy.window().then((win) => (win as unknown as { __resetFolders?: () => void }).__resetFolders?.())
     stubFiles()
     cy.get('button').contains('Browse…').click()
     cy.wait('@fileList')
@@ -186,11 +187,14 @@ describe('directory browser', () => {
     cy.get('[data-testid="breadcrumb-/Users"]').should('be.disabled')
   })
 
-  it('selects the chosen folder on confirm', () => {
+  it('selects the chosen folder on confirm without persisting a tab', () => {
     cy.get('button').contains('components').click()
     cy.wait('@fileList')
     cy.get('button').contains('Use this folder').click()
-    cy.get('input#cwd').should('have.value', '/Users/dev/project/src/components')
+    // The chosen path becomes the active folder for the session only — it is
+    // not persisted as a tab (reloads restore the env-configured folders).
+    cy.get('[role="dialog"]').should('not.exist')
+    cy.get('button[title="/Users/dev/project/src/components"]').should('not.exist')
   })
 
   it('cancels without changing the directory', () => {

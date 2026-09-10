@@ -34,6 +34,15 @@ async function parse(response: Response): Promise<unknown> {
   return response.json()
 }
 
+// The server answers 404 with QuestionNotFoundError when the request is no
+// longer pending (already answered, rejected, or the server restarted).
+export class QuestionNotFoundError extends Error {
+  constructor(requestID: string) {
+    super(`Question request no longer pending: ${requestID}`)
+    this.name = 'QuestionNotFoundError'
+  }
+}
+
 export async function listQuestions(
   url: string,
   directory: string | null,
@@ -43,18 +52,31 @@ export async function listQuestions(
   return (await parse(response)) as QuestionRequest[]
 }
 
-export async function replyQuestion(url: string, requestID: string, answers: string[][]): Promise<void> {
-  const response = await fetch(`${url}/question/${encodeURIComponent(requestID)}/reply`, {
+export async function replyQuestion(
+  url: string,
+  requestID: string,
+  directory: string | null,
+  answers: string[][],
+): Promise<void> {
+  const query = directory ? `?directory=${encodeURIComponent(directory)}` : ''
+  const response = await fetch(`${url}/question/${encodeURIComponent(requestID)}/reply${query}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ answers }),
   })
+  if (response.status === 404) throw new QuestionNotFoundError(requestID)
   await parse(response)
 }
 
-export async function rejectQuestion(url: string, requestID: string): Promise<void> {
-  const response = await fetch(`${url}/question/${encodeURIComponent(requestID)}/reject`, {
+export async function rejectQuestion(
+  url: string,
+  requestID: string,
+  directory: string | null,
+): Promise<void> {
+  const query = directory ? `?directory=${encodeURIComponent(directory)}` : ''
+  const response = await fetch(`${url}/question/${encodeURIComponent(requestID)}/reject${query}`, {
     method: 'POST',
   })
+  if (response.status === 404) throw new QuestionNotFoundError(requestID)
   await parse(response)
 }

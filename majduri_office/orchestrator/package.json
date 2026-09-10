@@ -1,0 +1,32 @@
+{
+  "name": "majduri-orchestrator",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Multi-agent orchestrator for OpenCode sessions",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "node --loader tsx src/index.ts",
+    "dev": "tsx src/index.ts",
+    "cli": "tsx src/cli/index.tsx",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@assistant-ui/react-ink": "^0.0.39",
+    "@assistant-ui/react-ink-markdown": "^0.0.38",
+    "@opencode-ai/sdk": "^1.18.23",
+    "@types/react": "^19.2.18",
+    "assistant-cloud": "^0.1.41",
+    "better-sqlite3": "^11.0.0",
+    "ink": "^7.1.1",
+    "react": "^19.2.8",
+    "shiki": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}

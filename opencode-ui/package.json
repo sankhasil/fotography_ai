@@ -14,7 +14,11 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "test:e2e": "start-server-and-test dev http://localhost:5173 \"cypress run\"",
-    "test:e2e:open": "start-server-and-test dev http://localhost:5173 \"cypress open\""
+    "test:e2e:open": "start-server-and-test dev http://localhost:5173 \"cypress open\"",
+    "ollama-proxy": "node tools/ollama-tool-call-proxy.mjs",
+    "ollama:serve": "concurrently -k \"bash tools/ollama-serve.sh\" \"node tools/ollama-tool-call-proxy.mjs\"",
+    "ollama:stop": "bash tools/ollama-stop.sh; pkill -f 'ollama-tool-call-proxy' 2>/dev/null || true",
+    "generate-pdf": "node docs/pdf_gen.js"
   },
   "dependencies": {
     "@opencode-ai/sdk": "^1.18.14",
@@ -26,11 +30,13 @@
     "@types/node": "^22.10.0",
     "@vitejs/plugin-vue": "^5.2.0",
     "@vue/test-utils": "^2.4.11",
+    "concurrently": "^10.0.5",
     "cypress": "^15.20.0",
     "eslint": "^9.17.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-vue": "^9.32.0",
     "jsdom": "^30.0.1",
+    "jspdf": "^4.2.1",
     "prettier": "^3.4.2",
     "start-server-and-test": "^3.0.12",
     "tailwindcss": "^4.0.0",

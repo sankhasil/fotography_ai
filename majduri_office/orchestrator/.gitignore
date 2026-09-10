@@ -1,0 +1,7 @@
+node_modules/
+dist/
+orchestrator.db
+orchestrator.db-wal
+orchestrator.db-shm
+.env
+*.log

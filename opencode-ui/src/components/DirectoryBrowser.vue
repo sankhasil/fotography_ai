@@ -48,18 +48,28 @@ function confirm(): void {
 
 async function open(): Promise<void> {
   scrollTop.value = 0
-  const serverDir = await serverDirectory()
-  await tree.load(props.client, props.initialPath ?? serverDir ?? '/')
+  await tree.load(props.client, await startPath())
 }
 
-async function serverDirectory(): Promise<string | null> {
-  if (!props.client) return null
-  try {
-    const result = await props.client.path.get()
-    return result.data?.directory ?? null
-  } catch {
-    return null
+// The server can only list paths inside its worktree (anything above it makes
+// /file return HTTP 500). A session folder or pinned tab may live outside the
+// worktree — e.g. a global CLI session — so clamp the start path to the
+// worktree instead of letting /file reject it.
+async function startPath(): Promise<string> {
+  if (!props.client) return '/'
+  const result = await props.client.path.get()
+  const worktree = result.data?.worktree ?? null
+  const directory = result.data?.directory ?? '/'
+  if (props.initialPath && worktree && withinWorktree(props.initialPath, worktree)) {
+    return props.initialPath
   }
+  return directory
+}
+
+function withinWorktree(path: string, worktree: string): boolean {
+  const normalized = path.replace(/\/+$/, '') || '/'
+  const root = worktree.replace(/\/+$/, '') || '/'
+  return normalized === root || normalized.startsWith(root + '/')
 }
 
 async function enterDir(path: string): Promise<void> {

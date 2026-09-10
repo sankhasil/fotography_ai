@@ -16,14 +16,18 @@ import { useTheme } from '@/composables/useTheme'
 
 const {
   client,
-  cwd,
-  setWorkingDirectory,
+  configuredFolders,
+  activeFolder,
+  selectFolder,
   activeSession,
-  sessions,
+  sessionsFor,
   sessionStatus,
   sessionError,
   sending,
   runningSessions,
+  pendingLimit,
+  resolveLimit,
+  dismissLimit,
   createSession,
   listSessions,
   selectSession,
@@ -57,20 +61,25 @@ const isCartoony = computed(() => theme.value === 'cartoony')
 // running UI sessions are kept, captured when the trash is opened.
 const deleteAllTarget = ref<{ count: number; kept: number } | null>(null)
 
+// The active folder's session pool drives history, deletion and the limit.
+const folderSessions = computed(() => sessionsFor(activeFolder.value))
+
 function closeDeleteDialogs(): void {
   deleteTarget.value = null
   deleteAllTarget.value = null
 }
 
 const hasDeletableSessions = computed(() =>
-  sessions.value.some((session) => isUISession(session.id) && !runningSessions.value.has(session.id)),
+  folderSessions.value.some(
+    (session) => isUISession(session.id) && !runningSessions.value.has(session.id),
+  ),
 )
 
 function openDeleteAll(): void {
-  const deletable = sessions.value.filter(
+  const deletable = folderSessions.value.filter(
     (session) => isUISession(session.id) && !runningSessions.value.has(session.id),
   )
-  const kept = sessions.value.filter(
+  const kept = folderSessions.value.filter(
     (session) => isUISession(session.id) && runningSessions.value.has(session.id),
   )
   deleteAllTarget.value = { count: deletable.length, kept: kept.length }
@@ -92,7 +101,7 @@ async function confirmDelete(): Promise<void> {
   // when its animation completes.
   sweeping.value = true
   try {
-    await deleteSession(currentClient, target.id)
+    await deleteSession(currentClient, activeFolder.value, target.id)
   } catch {
     sweeping.value = false
   }
@@ -104,7 +113,7 @@ async function confirmDeleteAll(): Promise<void> {
   if (!currentClient) return
   sweeping.value = true
   try {
-    await deleteUISessions(currentClient)
+    await deleteUISessions(currentClient, activeFolder.value)
   } catch {
     sweeping.value = false
   }
@@ -138,7 +147,7 @@ const statusTone = computed<'neutral' | 'accent' | 'success' | 'error'>(() => {
 
 async function browse(): Promise<void> {
   if (!client.value) return
-  let start = cwd.value
+  let start = activeFolder.value
   if (!start) {
     try {
       const result = await client.value.path.get()
@@ -151,17 +160,25 @@ async function browse(): Promise<void> {
   browserVisible.value = true
 }
 
+// Pick a path in the browser: make it the active folder for the current session
+// and load its session pool. It is not persisted as a tab — reloads restore the
+// env-configured folders only.
 function onSelect(path: string): void {
-  setWorkingDirectory(path)
+  void selectFolder(path)
 }
 
-// Reload history whenever the connection or working directory changes.
-watch([client, cwd], ([currentClient]) => {
-  if (currentClient) void listSessions(currentClient, cwd.value)
+function openFolder(folder: string): void {
+  if (!client.value) return
+  void selectFolder(folder)
+}
+
+// Reload the active folder's history whenever the connection becomes ready.
+watch(client, (currentClient) => {
+  if (currentClient) void selectFolder(activeFolder.value)
 })
 
 onMounted(() => {
-  if (client.value) void listSessions(client.value, cwd.value)
+  if (client.value) void selectFolder(activeFolder.value)
 })
 
 async function openSession(session: Session): Promise<void> {
@@ -177,7 +194,11 @@ async function newSession(): Promise<void> {
   if (!client.value || creating.value) return
   creating.value = true
   try {
-    await createSession(client.value, cwd.value)
+    const outcome = await createSession(client.value, activeFolder.value)
+    // A full pool: the limit dialog lets the user free one session first.
+    if (outcome.kind === 'limit') {
+      pendingLimit.value = { folder: outcome.folder, sessions: outcome.sessions }
+    }
   } finally {
     creating.value = false
   }
@@ -203,27 +224,35 @@ function onKeydown(event: KeyboardEvent): void {
   <section class="app-border panel-bg flex min-h-0 flex-col gap-3 overflow-y-auto border-r p-4">
     <h2 class="app-fg text-sm font-semibold">Input</h2>
 
-    <label for="cwd" class="muted text-xs font-medium">Working directory</label>
-    <div class="flex items-center gap-2">
-      <input
-        id="cwd"
-        class="app-border panel-bg app-fg min-w-0 flex-1 rounded border px-2 py-1 text-sm"
-        :value="cwd ?? ''"
-        :placeholder="client ? 'Server default directory' : 'Not connected'"
-        readonly
-        @click="browse"
-      />
-      <UiButton variant="secondary" size="sm" :disabled="!client" @click="browse">Browse…</UiButton>
-      <UiButton
-        v-if="cwd"
-        variant="ghost"
-        size="sm"
-        :disabled="!client"
-        @click="setWorkingDirectory(null)"
+    <label class="muted text-xs font-medium">Folders</label>
+    <div class="flex flex-wrap items-center gap-1.5">
+      <button
+        v-for="folder in configuredFolders"
+        :key="folder.path"
+        type="button"
+        class="app-border flex max-w-[14rem] items-center gap-1.5 rounded border px-1.5 py-0.5 text-xs"
+        :class="
+          activeFolder === folder.path
+            ? 'border-[var(--accent)] text-[var(--accent)]'
+            : 'muted hover:text-[var(--app-fg)]'
+        "
+        :title="folder.path"
+        @click="openFolder(folder.path)"
       >
-        Clear
+        <span class="truncate">{{ folder.label }}</span>
+        <span
+          class="shrink-0 rounded border border-[var(--accent)] px-1 text-[9px] font-semibold text-[var(--accent)]"
+          title="Configured in the .env file"
+          >default</span
+        >
+      </button>
+      <UiButton variant="secondary" size="sm" :disabled="!client" @click="browse">
+        Browse…
       </UiButton>
     </div>
+    <p v-if="configuredFolders.length === 0" class="muted text-xs">
+      No folders configured — set VITE_FOLDERS in your .env file. Sessions are grouped per folder.
+    </p>
 
     <div class="flex items-center justify-between">
       <label class="muted text-xs font-medium">Session</label>
@@ -266,14 +295,14 @@ function onKeydown(event: KeyboardEvent): void {
           variant="ghost"
           size="sm"
           :disabled="!client"
-          @click="client && listSessions(client, cwd)"
+          @click="client && listSessions(client, activeFolder)"
         >
           Refresh
         </UiButton>
       </div>
     </div>
-    <ul v-if="sessions.length" class="flex max-h-40 flex-col gap-0.5 overflow-y-auto">
-      <li v-for="session in sessions" :key="session.id">
+    <ul v-if="folderSessions.length" class="flex max-h-40 flex-col gap-0.5 overflow-y-auto">
+      <li v-for="session in folderSessions" :key="session.id">
         <div
           class="app-border flex items-center gap-1 rounded border px-2 py-1 text-left text-xs hover:bg-[var(--bg-elevated)]"
           :class="activeSession?.id === session.id ? 'border-[var(--accent)]' : 'app-border'"
@@ -323,7 +352,7 @@ function onKeydown(event: KeyboardEvent): void {
         </div>
       </li>
     </ul>
-    <p v-else class="muted text-xs">No previous sessions.</p>
+    <p v-else class="muted text-xs">No sessions for this folder yet.</p>
 
     <textarea
       ref="textareaRef"
@@ -351,11 +380,11 @@ function onKeydown(event: KeyboardEvent): void {
     <Teleport to="body">
       <Transition name="fade">
         <div
-          v-if="deleteTarget || deleteAllTarget"
+          v-if="deleteTarget || deleteAllTarget || pendingLimit"
           class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           role="dialog"
           aria-modal="true"
-          @click.self="closeDeleteDialogs"
+          @click.self="pendingLimit ? dismissLimit() : closeDeleteDialogs()"
         >
           <template v-if="deleteAllTarget">
             <div class="panel-bg app-border app-fg w-full max-w-sm rounded-lg border p-4 shadow-xl">
@@ -375,6 +404,41 @@ function onKeydown(event: KeyboardEvent): void {
               <div class="mt-4 flex justify-end gap-2">
                 <UiButton variant="secondary" size="sm" @click="closeDeleteDialogs">Cancel</UiButton>
                 <UiButton variant="danger" size="sm" @click="confirmDeleteAll">Yes, delete all</UiButton>
+              </div>
+            </div>
+          </template>
+          <template v-else-if="pendingLimit">
+            <div class="panel-bg app-border app-fg w-full max-w-md rounded-lg border p-4 shadow-xl">
+              <h3 class="text-sm font-semibold">Session limit reached</h3>
+              <p class="muted mt-2 text-xs">
+                Each folder can have up to 5 sessions. Delete one to create a new session here
+                (running sessions cannot be deleted).
+              </p>
+              <ul class="mt-3 flex flex-col gap-1">
+                <li v-for="item in pendingLimit.sessions" :key="item.id">
+                  <button
+                    type="button"
+                    class="app-border flex w-full items-center justify-between gap-2 rounded border px-2 py-1.5 text-left text-xs hover:bg-[var(--bg-elevated)] disabled:cursor-not-allowed disabled:opacity-50"
+                    :disabled="runningSessions.has(item.id)"
+                    :title="
+                      runningSessions.has(item.id)
+                        ? 'This session is running and cannot be deleted'
+                        : `Delete ${sessionAlias(item.id)} and create a new session`
+                    "
+                    @click="resolveLimit(item.id)"
+                  >
+                    <span class="truncate">{{ sessionAlias(item.id) }}</span>
+                    <span class="muted shrink-0 font-mono text-[10px]">
+                      {{ runningSessions.has(item.id) ? 'running' : 'delete' }}
+                    </span>
+                  </button>
+                </li>
+              </ul>
+              <p class="muted mt-1 text-xs">
+                {{ pendingLimit.queuedText ? 'Your prompt will be sent after a session is freed.' : 'Creation will continue after a session is freed.' }}
+              </p>
+              <div class="mt-4 flex justify-end gap-2">
+                <UiButton variant="secondary" size="sm" @click="dismissLimit">Cancel</UiButton>
               </div>
             </div>
           </template>

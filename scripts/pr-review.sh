@@ -26,7 +26,7 @@ DIM='\033[2m'
 BLD='\033[1m'
 RST='\033[0m'
 
-MODEL="${REVIEW_MODEL:-qwen2.5-coder:14b}"
+MODEL="${REVIEW_MODEL:-qwen2.5-coder:7b}"
 OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 POST_COMMENTS="${POST_COMMENTS:-false}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -44,21 +44,22 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PR_URL="$1"
 
 # ── Parse PR URL (python3 stdlib — no jq/sed gymnastics) ─────────────────────
-read -r BITBUCKET_BASE PROJECT REPO PR_NUM << EOF
-$(python3 - "$PR_URL" << 'PYEOF'
+# ponytail: Using subprocess.run instead of heredoc+read — avoids pipefail/read
+# failures when devbox or non-interactive shells expand arguments differently.
+PARSED="$(python3 -c "
 import re, sys
 m = re.search(
     r'(https://[^/]+(?:/[^/]+)?)/projects/([^/]+)/repos/([^/]+)/pull-requests/(\d+)',
     sys.argv[1]
 )
 if not m:
-    print("ERROR: Could not parse PR URL", file=sys.stderr)
+    print('ERROR: Could not parse PR URL', file=sys.stderr)
     sys.exit(1)
 base, proj, repo, num = m.groups()
-print(base, proj, repo, num)
-PYEOF
-)
-EOF
+print(base + '\t' + proj + '\t' + repo + '\t' + num)
+" "$PR_URL")" || { echo -e "${RED}✗ Could not parse PR URL: ${PR_URL}${RST}"; exit 1; }
+
+IFS=$'\t' read -r BITBUCKET_BASE PROJECT REPO PR_NUM <<< "$PARSED"
 
 echo ""
 echo -e "${BLD}◈ PR Review${RST}"
@@ -194,17 +195,6 @@ else
 fi
 
 echo -e "${GRN}✓ Checked out${RST}  ${FROM_BRANCH}"
-
-# ── Get changed files ─────────────────────────────────────────────────────────
-CHANGED_FILES=$(git -C "$TEMP_DIR" diff \
-  --name-only \
-  "origin/${TO_BRANCH}...HEAD" \
-  -- ':!*.lock' ':!*.sum' ':!*.png' ':!*.jpg' ':!*.svg' ':!dist/*' ':!*.min.js')
-
-FILE_COUNT=$(echo "$CHANGED_FILES" | grep -c . || echo 0)
-echo -e "${GRN}✓ ${FILE_COUNT} changed file(s) to review${RST}"
-echo ""
-
 
 # ── Get changed files ─────────────────────────────────────────────────────────
 CHANGED_FILES=$(git -C "$TEMP_DIR" diff \

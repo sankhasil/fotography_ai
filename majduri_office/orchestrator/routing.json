@@ -1,0 +1,27 @@
+{
+  "test": {
+    "backend": "local",
+    "parallel": true,
+    "token_limit": null
+  },
+  "feature": {
+    "backend": "zen",
+    "parallel": false,
+    "token_limit": 10000
+  },
+  "refactor": {
+    "backend": "zen",
+    "parallel": true,
+    "token_limit": 10000
+  },
+  "docs": {
+    "backend": "local",
+    "parallel": false,
+    "token_limit": null
+  },
+  "bugfix": {
+    "backend": "zen",
+    "parallel": false,
+    "token_limit": 10000
+  }
+}

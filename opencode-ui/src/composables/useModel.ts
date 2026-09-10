@@ -8,15 +8,19 @@ export interface ModelSelection {
 
 export interface ModelOption extends ModelSelection {
   modelName: string
+  contextLimit: number
+  outputLimit: number
 }
 
 const MODEL_KEY = 'opencode-ui:model'
 
-// ponytail: the picker is scoped to free OpenCode Zen models, mirroring the
-// CLI's curated /model list. The opencode provider only exposes free models, so
-// provider-scoping alone yields the right set. Revisit if paid models become
-// first-class options.
-const FREE_PROVIDER_IDS = new Set(['opencode'])
+// ponytail: the picker is scoped to free OpenCode Zen models plus the local
+// ollama providers. The opencode provider only exposes free models, so provider-
+// scoping alone yields the right set. ollama serves gemma4 directly; ollama-qwen
+// serves qwen2.5-coder through the tool-call proxy (tools/ollama-tool-call-proxy.mjs),
+// which rewrites the model's bare-JSON tool calls into real tool_calls. Revisit
+// if paid models become first-class options.
+const FREE_PROVIDER_IDS = new Set(['opencode', 'ollama', 'ollama-qwen'])
 
 // Module-level state, same pattern as the other composables. The list is flat
 // because only one provider is shown; selection is persisted and restored on
@@ -72,6 +76,8 @@ async function refresh(client: OpencodeClient): Promise<void> {
           providerName: provider.name,
           modelID: model.id,
           modelName: model.name,
+          contextLimit: model.limit?.context ?? 128000,
+          outputLimit: model.limit?.output ?? 4096,
         })),
       )
     const stored = readStored()
@@ -105,6 +111,19 @@ function select(index: number | null): void {
   persist()
 }
 
+function getSelectedModelLimit(): { context: number; output: number } | null {
+  if (!selected.value) return null
+  const option = options.value.find(
+    (o) => o.providerID === selected.value?.providerID && o.modelID === selected.value?.modelID,
+  )
+  if (!option) return null
+  return { context: option.contextLimit, output: option.outputLimit }
+}
+
+function findLargerContextModels(currentLimit: number): ModelOption[] {
+  return options.value.filter((o) => o.contextLimit > currentLimit)
+}
+
 export function useModel() {
   return {
     options,
@@ -113,5 +132,7 @@ export function useModel() {
     selectedLabel,
     refresh,
     select,
+    getSelectedModelLimit,
+    findLargerContextModels,
   }
 }

@@ -6,7 +6,8 @@ import { useAppStore } from '@/composables/useAppStore'
 const props = defineProps<{ eventsVisible: boolean; lastEventAt: number | null }>()
 defineEmits<{ (e: 'toggle-events'): void }>()
 
-const { status, error, connect } = useAppStore()
+const { status, error, connect, formattedRemaining, formattedUsed, usagePercent, warningLevel } =
+  useAppStore()
 
 const now = ref(Date.now())
 let timer: ReturnType<typeof setInterval> | null = null
@@ -26,6 +27,12 @@ const elapsed = computed(() => {
   const rest = seconds % 60
   return `${minutes}:${String(rest).padStart(2, '0')}`
 })
+
+const warningClass = computed(() => {
+  if (warningLevel.value === 'critical') return 'text-[var(--error)] font-semibold'
+  if (warningLevel.value === 'warning') return 'text-[var(--warning)]'
+  return ''
+})
 </script>
 
 <template>
@@ -33,7 +40,12 @@ const elapsed = computed(() => {
     class="app-border app-bg muted flex items-center gap-4 border-t px-4 py-1.5 text-xs"
   >
     <span>tool: —</span>
-    <span>tokens: 0</span>
+    <span :class="warningClass" title="Tokens remaining in context window">
+      tokens: {{ formattedRemaining }}
+      <span v-if="usagePercent > 0" class="opacity-70">
+        ({{ Math.round(usagePercent) }}% used)
+      </span>
+    </span>
     <span>elapsed: {{ elapsed }}</span>
     <span v-if="status === 'offline' && error" class="text-[var(--error)]" :title="error">
       offline

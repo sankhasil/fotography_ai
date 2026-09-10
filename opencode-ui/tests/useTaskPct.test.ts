@@ -1,65 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// useTaskPct keeps module-level state and a rAF loop, so reset modules per
-// test and stub rAF to drive the clock deterministically alongside fake Date.
-let rafCallbacks: Array<() => void> = []
-
-function stubRaf(): void {
-  rafCallbacks = []
-  vi.stubGlobal('requestAnimationFrame', (cb: () => void): number => {
-    rafCallbacks.push(cb)
-    return rafCallbacks.length
-  })
-  vi.stubGlobal('cancelAnimationFrame', () => undefined)
-}
-
-// Runs `count` frames of `stepMs` each, firing the single pending rAF
-// callback per frame so the clock advances like it does in the browser.
-function frames(count: number, stepMs = 16): void {
-  for (let i = 0; i < count; i++) {
-    vi.advanceTimersByTime(stepMs)
-    rafCallbacks.splice(0).forEach((cb) => cb())
-  }
-}
-
+// useTaskPct keeps module-level singleton state, so reset modules per test to
+// give each one a fresh clock.
 beforeEach(() => {
-  vi.useFakeTimers()
   vi.resetModules()
-  stubRaf()
-})
-
-afterEach(() => {
-  vi.useRealTimers()
-  vi.unstubAllGlobals()
-})
-
-describe('useTaskPct clock', () => {
-  it('climbs and never exceeds 99 while running; holds still when stopped', async () => {
-    const { pct, startTaskPct, stopTaskPct } = await import('@/composables/useTaskPct')
-
-    startTaskPct()
-    frames(60, 1000) // one simulated minute
-    expect(pct.value).toBeGreaterThan(0)
-    expect(pct.value).toBeLessThanOrEqual(99)
-
-    stopTaskPct()
-    const frozen = pct.value
-    frames(10, 1000)
-    expect(pct.value).toBe(frozen)
-  })
-
-  it('resets pct to 0 and stops the clock', async () => {
-    const { pct, resetTaskPct, startTaskPct } = await import('@/composables/useTaskPct')
-
-    startTaskPct()
-    frames(20, 1000)
-    expect(pct.value).toBeGreaterThan(0)
-
-    resetTaskPct()
-    expect(pct.value).toBe(0)
-    frames(10, 1000)
-    expect(pct.value).toBe(0)
-  })
 })
 
 describe('useTaskPct stage model', () => {
@@ -98,5 +42,139 @@ describe('useTaskPct stage model', () => {
     expect(isComplete(3)).toBe(true)
     expect(stageProgress(3)).toBe(100)
     expect(stageProgress(2)).toBe(100)
+  })
+})
+
+describe('useTaskPct observe', () => {
+  it('snaps pct to the stage floor and never regresses', async () => {
+    const { observe, pct, startTaskPct } = await import('@/composables/useTaskPct')
+
+    startTaskPct('ses_run')
+    expect(pct.value).toBe(0)
+
+    observe('ses_run', 'reasoning')
+    expect(pct.value).toBe(0)
+
+    observe('ses_run', 'searching')
+    expect(pct.value).toBe(25)
+
+    observe('ses_run', 'applying')
+    expect(pct.value).toBe(50)
+
+    observe('ses_run', 'streaming')
+    expect(pct.value).toBe(75)
+
+    // An earlier-phase signal after a later one must not move the clock back.
+    observe('ses_run', 'reasoning')
+    expect(pct.value).toBe(75)
+  })
+
+  it('ignores signals from other sessions', async () => {
+    const { observe, pct, startTaskPct } = await import('@/composables/useTaskPct')
+
+    startTaskPct('ses_run')
+    observe('ses_other', 'streaming')
+    expect(pct.value).toBe(0)
+
+    observe('ses_other', 'applying')
+    expect(pct.value).toBe(0)
+  })
+
+  it('does nothing when no run is active', async () => {
+    const { observe, pct } = await import('@/composables/useTaskPct')
+
+    pct.value = 75
+    observe('ses_run', 'streaming')
+    expect(pct.value).toBe(75)
+  })
+
+  it('start resets pct for the new run', async () => {
+    const { observe, pct, startTaskPct } = await import('@/composables/useTaskPct')
+
+    startTaskPct('ses_a')
+    observe('ses_a', 'streaming')
+    expect(pct.value).toBe(75)
+
+    startTaskPct('ses_b')
+    expect(pct.value).toBe(0)
+    observe('ses_a', 'streaming')
+    expect(pct.value).toBe(0)
+    observe('ses_b', 'searching')
+    expect(pct.value).toBe(25)
+  })
+
+  it('does not reset a live clock when start repeats for the same session', async () => {
+    // Regression: the busy flag flaps while the status poll reconciles;
+    // re-starting the same run used to zero the clock mid-run.
+    const { observe, pct, startTaskPct } = await import('@/composables/useTaskPct')
+
+    startTaskPct('ses_run')
+    observe('ses_run', 'searching')
+    expect(pct.value).toBe(25)
+
+    startTaskPct('ses_run')
+    expect(pct.value).toBe(25)
+
+    observe('ses_run', 'applying')
+    expect(pct.value).toBe(50)
+  })
+
+  it('completes the clock only for its own session', async () => {
+    const { completeTaskPct, observe, pct, startTaskPct } = await import('@/composables/useTaskPct')
+
+    startTaskPct('ses_run')
+    observe('ses_run', 'streaming')
+    expect(pct.value).toBe(75)
+
+    completeTaskPct('ses_other')
+    expect(pct.value).toBe(75)
+
+    completeTaskPct('ses_run')
+    expect(pct.value).toBe(100)
+  })
+})
+
+describe('useTaskPct advance (token-driven fill)', () => {
+  it('fills the reasoning band without completing the stage', async () => {
+    const { advance, isComplete, pct, startTaskPct, stageProgress } =
+      await import('@/composables/useTaskPct')
+
+    startTaskPct('ses_run')
+    advance('ses_run', 'reasoning', 400)
+    expect(pct.value).toBeGreaterThan(0)
+    expect(pct.value).toBeLessThan(25)
+    expect(stageProgress(0)).toBeGreaterThan(0)
+    expect(isComplete(0)).toBe(false)
+
+    advance('ses_run', 'reasoning', 8000)
+    expect(pct.value).toBeLessThan(25)
+    expect(isComplete(0)).toBe(false)
+  })
+
+  it('snaps to the streaming floor on the first text token, then advances', async () => {
+    const { advance, pct, startTaskPct } = await import('@/composables/useTaskPct')
+
+    startTaskPct('ses_run')
+    advance('ses_run', 'reasoning', 400)
+    advance('ses_run', 'streaming', 200)
+    expect(pct.value).toBeGreaterThanOrEqual(75)
+    expect(pct.value).toBeLessThan(100)
+
+    const before = pct.value
+    advance('ses_run', 'streaming', 800)
+    expect(pct.value).toBeGreaterThan(before)
+  })
+
+  it('ignores deltas from other sessions and after the phase ends', async () => {
+    const { advance, observe, pct, startTaskPct } = await import('@/composables/useTaskPct')
+
+    startTaskPct('ses_run')
+    advance('ses_other', 'reasoning', 500)
+    expect(pct.value).toBe(0)
+
+    observe('ses_run', 'searching')
+    expect(pct.value).toBe(25)
+    advance('ses_run', 'reasoning', 500)
+    expect(pct.value).toBe(25)
   })
 })

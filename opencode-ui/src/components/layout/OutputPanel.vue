@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 
 import DiffViewer from '@/components/DiffViewer.vue'
 import DolphinBuilder from '@/components/DolphinBuilder.vue'
@@ -14,7 +14,7 @@ import StickFigureBuilder from '@/components/StickFigureBuilder.vue'
 import TaskProgress from '@/components/TaskProgress.vue'
 import { useAppStore } from '@/composables/useAppStore'
 import { useBusyCharacter } from '@/composables/useBusyCharacter'
-import { hasAssistantOutput, type MessageRecord } from '@/composables/useConversation'
+import { startTaskPct, stopTaskPct } from '@/composables/useTaskPct'
 import { useTheme } from '@/composables/useTheme'
 
 const {
@@ -54,21 +54,48 @@ const records = computed(() =>
 
 const diffs = computed(() => (activeSession.value ? diffsFor(activeSession.value.id) : []))
 
-function recordKey(record: MessageRecord): string {
-  return record.info?.id ?? record.parts[0]?.messageID
-}
-
-// Freeze which messages already exist the moment a run starts, so the busy
-// visual keys off output produced by the *current* prompt. Every send shows
-// it again — older turns on screen do not count as fresh output.
-const runStartIds = ref(new Set<string>())
+// The loading screen is the default view each run; the user can opt into
+// seeing the raw console (the conversation) while a run is in flight. Reset
+// per run so every new prompt starts at the loading screen.
+const showConsole = ref(false)
+// The busy clock follows the run lifecycle, not the widget's visibility, so
+// toggling "Show console" never resets the phases mid-run.
 watch(
   busy,
   (isBusy) => {
-    if (isBusy) runStartIds.value = new Set(records.value.map(recordKey))
+    if (isBusy) {
+      showConsole.value = false
+      startTaskPct(activeSession.value?.id ?? null)
+    } else {
+      stopTaskPct()
+    }
   },
   { flush: 'sync' },
 )
+
+// Scroll helper: the conversation is unmounted while the busy visual is up
+// (records stream against a null ref), so it would mount mid-history at the
+// top. Any transition INTO the conversation lands on the newest message.
+function scrollToBottom(): void {
+  const el = containerRef.value
+  if (el) el.scrollTop = el.scrollHeight
+}
+
+watch(
+  busy,
+  (isBusy) => {
+    if (isBusy) return
+    followScroll.value = true
+    void nextTick(scrollToBottom)
+  },
+  { flush: 'post' },
+)
+
+watch(showConsole, (visible) => {
+  if (!visible) return
+  followScroll.value = true
+  void nextTick(scrollToBottom)
+})
 
 // The agent is blocked on a question tool. The question card replaces the
 // busy visual so the fake progress never hides a question that needs an
@@ -78,14 +105,36 @@ const showQuestion = computed(() => {
   return Boolean(request && activeSession.value && request.sessionID === activeSession.value.id)
 })
 
-// While busy and no output from the current run has rendered yet, the whole
-// panel swaps to the busy visual (theme backdrop + task-progress pies). Every
-// theme shows it — matrix/jarvis add their backdrop behind the pies.
-const showBusyVisual = computed(() => {
-  if (!busy.value || showQuestion.value) return false
-  const fresh = records.value.filter((record) => !runStartIds.value.has(recordKey(record)))
-  return !hasAssistantOutput(fresh)
-})
+// While busy and no question is pending, the whole panel swaps to the busy
+// visual (theme backdrop + task-progress pies). It stays up through every
+// phase — reasoning, tools, diffs, final text — so the real phases are
+// visible; the conversation only appears when the run ends (or via the
+// "Show console" toggle).
+const showBusyVisual = computed(() => busy.value && !showQuestion.value)
+
+// The question card centers when it fits and scrolls when the question list is
+// too tall. Each new request scrolls back to the top so the first question is
+// reachable again.
+const questionRef = ref<HTMLDivElement | null>(null)
+watch(
+  () => pendingQuestion.value?.id ?? null,
+  () => {
+    void nextTick(() => {
+      if (questionRef.value) questionRef.value.scrollTop = 0
+    })
+  },
+)
+
+// Switching sessions always lands on the newest message: re-enable follow so
+// the records watcher snaps to the bottom of the freshly loaded conversation
+// even if the previous session was left scrolled up.
+watch(
+  () => activeSession.value?.id ?? null,
+  () => {
+    followScroll.value = true
+    void nextTick(scrollToBottom)
+  },
+)
 
 function onScroll(): void {
   const el = containerRef.value
@@ -109,13 +158,24 @@ watch(
   <section class="panel-bg relative flex min-h-0 flex-col">
     <div class="app-border flex items-center justify-between border-b px-4 py-2">
       <h2 class="app-fg text-sm font-semibold">Output</h2>
-      <span v-if="activeSession" class="muted text-xs">session {{ activeSession.id }}</span>
+      <div class="flex items-center gap-3">
+        <button
+          v-if="busy && !showQuestion"
+          type="button"
+          class="muted cursor-pointer text-xs underline-offset-2 hover:text-[var(--app-fg)]"
+          @click="showConsole = !showConsole"
+        >
+          {{ showConsole ? 'Show loading screen' : 'Show console' }}
+        </button>
+        <span v-if="activeSession" class="muted text-xs">session {{ activeSession.id }}</span>
+      </div>
     </div>
     <Transition name="busy-crossfade" mode="out-in">
       <div
         v-if="showQuestion"
         key="question"
-        class="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden p-4"
+        ref="questionRef"
+        class="relative flex min-h-0 flex-1 flex-col items-center overflow-y-auto p-4"
       >
         <QuestionCard
           :request="pendingQuestion!"
@@ -126,7 +186,7 @@ watch(
         />
       </div>
       <div
-        v-else-if="showBusyVisual"
+        v-else-if="showBusyVisual && !showConsole"
         key="busy"
         class="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden"
       >
@@ -150,7 +210,6 @@ watch(
         />
         <StickFigureBuilder v-else-if="isCartoony" class="absolute inset-0" />
         <TaskProgress
-          :active="busy"
           class="relative z-10"
           :class="isCartoony ? 'mb-auto mt-8' : ''"
         />
@@ -167,7 +226,7 @@ watch(
             :key="record.info?.id ?? record.parts[0]?.messageID"
             :record="record"
           />
-          <section v-if="diffs.length" class="app-fg flex flex-col gap-2">
+          <section v-if="diffs.length" class="app-fg flex shrink-0 flex-col gap-2">
             <h3 class="muted text-xs font-semibold">Changes</h3>
             <DiffViewer v-for="diff in diffs" :key="diff.file" :diff="diff" />
           </section>

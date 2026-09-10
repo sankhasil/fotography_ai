@@ -30,7 +30,7 @@ function partTime(part: Part): number | null {
 </script>
 
 <template>
-  <article class="app-border panel-bg animate-in flex flex-col gap-2 rounded-lg border p-3">
+  <article class="app-border panel-bg animate-in flex shrink-0 flex-col gap-2 rounded-lg border p-3">
     <header class="muted flex items-center gap-2 text-xs">
       <span class="accent-bg accent-fg rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase">
         {{ role }}

@@ -1,0 +1,222 @@
+{
+  "visumAntragsart": "KURZFRISTIGER_AUFENTHALT",
+  "antragsteller": {
+    "familienname": "SIL",
+    "vorname": "TAPAN KUMAR",
+    "geburtsdatum": "10.11.1948",
+    "geburtsort": "KOLKATA",
+    "geburtsland": {
+      "valueListID": {
+        "name": "land",
+        "context": "visa-domain",
+        "language": "en",
+        "version": "1.0"
+      },
+      "valueListItemKey": "IND"
+    },
+    "familienstand": {
+      "valueListID": {
+        "context": "visa-domain",
+        "name": "familienstand",
+        "version": "1.0",
+        "language": "en"
+      },
+      "valueListItemKey": "ledig"
+    },
+    "geschlecht": {
+      "valueListID": {
+        "context": "visa-domain",
+        "name": "geschlecht",
+        "version": "1.0",
+        "language": "en"
+      },
+      "valueListItemKey": "M"
+    },
+    "staatsangehoerigkeitListe": [
+      {
+        "valueListID": {
+          "name": "land",
+          "context": "visa-domain",
+          "language": "en",
+          "version": "1.0"
+        },
+        "valueListItemKey": "IND"
+      }
+    ],
+    "isStellvertreter": false,
+    "stellvertreter": {
+      "familienname": null,
+      "vorname": null,
+      "anschrift": null,
+      "telefon": null,
+      "email": null
+    },
+    "pass": {
+      "passnummer": "V2551043",
+      "passArt": {
+        "valueListID": {
+          "context": "visa-domain",
+          "name": "pass_art",
+          "version": "1.0",
+          "language": "en"
+        },
+        "valueListItemKey": "01"
+      },
+      "ausgestelltVon": "RPO",
+      "ausstellenderStaat": {
+        "valueListID": {
+          "name": "land",
+          "context": "visa-domain",
+          "language": "en",
+          "version": "1.0"
+        },
+        "valueListItemKey": "IND"
+      },
+      "gueltigVon": "25.10.2021",
+      "gueltigBis": "24.10.2031"
+    },
+    "personendaten": {
+      "berufdaten": {
+        "berufAuswahl": {
+          "valueListID": {
+            "context": "visa-domain",
+            "name": "beruf",
+            "version": "1.0",
+            "language": "en"
+          },
+          "valueListItemKey": "28"
+        }
+      },
+      "staendigeAnschrift": {
+        "land": {
+          "valueListID": {
+            "name": "land",
+            "context": "visa-domain",
+            "language": "en",
+            "version": "1.0"
+          },
+          "valueListItemKey": "IND"
+        },
+        "ort": "KOLKATA",
+        "plz": "700106",
+        "strasse": "BLOCK FD,, SECTOR 3, SALT LAKE CITY BIDHANNAGAR",
+        "hausnummer": "289",
+        "kontaktdaten": {
+          "email": "TAPAN671948@GMAIL.COM",
+          "telefon": "918240795193"
+        }
+      },
+      "eltern": {
+        "vater": {},
+        "mutter": {},
+        "kontaktdaten": {}
+      }
+    },
+    "einreisegenehmigung": {},
+    "biometrie": {
+      "fingerabdrueckeBereitsErfasst": true,
+      "fingerabdrueckeErfassungsDatum": "24.06.2024"
+    }
+  },
+  "reisedaten": {
+    "aufenthaltszweckListe": [
+      {
+        "valueListID": {
+          "context": "visa-domain",
+          "name": "aufenthaltszweck",
+          "version": "1.0",
+          "language": "en"
+        },
+        "valueListItemKey": "10"
+      }
+    ],
+    "ersteinreiseStaat": {
+      "valueListID": {
+        "context": "visa-domain",
+        "name": "schengenland",
+        "version": "1.0",
+        "language": "en"
+      },
+      "valueListItemKey": "DEU"
+    },
+    "hauptzielListe": [
+      {
+        "valueListID": {
+          "context": "visa-domain",
+          "name": "schengenland",
+          "version": "1.0",
+          "language": "en"
+        },
+        "valueListItemKey": "DEU"
+      }
+    ],
+    "reisekostenUebernahme": {
+      "isAntragsteller": true,
+      "reisekostenUebernahmeAntragsteller": {
+        "antragstellerLebensunterhalt": {
+          "bar": true,
+          "kreditkarten": true
+        }
+      },
+      "dritte": {
+        "dritteLebensunterhalt": {}
+      }
+    },
+    "letzteVisumStickernummer": {
+      "nummer": "069106519"
+    }
+  },
+  "referenz": {
+    "referenzArt": {
+      "valueListID": {
+        "context": "visa-domain",
+        "name": "referenz_art",
+        "version": "1.0",
+        "language": "en"
+      },
+      "valueListItemKey": "4"
+    },
+    "abweichenderVerpflichtungsgeber": false,
+    "organisation": {
+      "name": "PREMIER INN HAMBURG CITY ABSTER"
+    },
+    "ansprechpartner": {
+      "anschrift": {
+        "strasse": "LUEBECKER STRASSE",
+        "hausnummer": "109",
+        "plz": "22087",
+        "ort": "HOHENFELDE HAMBURG",
+        "land": {
+          "valueListID": {
+            "name": "land",
+            "context": "visa-domain",
+            "language": "en",
+            "version": "1.0"
+          },
+          "valueListItemKey": "DEU"
+        }
+      },
+      "kontaktdaten": {
+        "telefon": "494080812888"
+      }
+    }
+  },
+  "visumdaten": {
+    "gueltigkeit": {
+      "von": "11.10.2026",
+      "bisGenau": {
+        "value": "21.10.2026"
+      }
+    },
+    "anzahlEinreisen": {
+      "valueListID": {
+        "context": "visa-domain",
+        "name": "anzahleinreisen",
+        "version": "1.0",
+        "language": "en"
+      },
+      "valueListItemKey": "MULT"
+    }
+  },
+  "rechtAufFreizuegigkeit": false
+}

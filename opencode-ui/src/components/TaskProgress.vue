@@ -1,28 +1,14 @@
 <script setup lang="ts">
-import { onUnmounted, watch } from 'vue'
-
 import { STAGES, useTaskPct } from '@/composables/useTaskPct'
 
 // Animated task progress for the busy state. A big percentage drives a row of
-// stage pies ("thinking", "checking", "assembling", "responding"); each pie
-// fills in turn as the overall percentage climbs. The whole widget is themed
-// via CSS custom properties so every theme reuses it. The clock itself lives
-// in useTaskPct so the octopus busy figure animates in lockstep.
+// stage pies ("reasoning", "searching", "applying", "streaming"); each pie
+// fills as the percentage climbs and is marked done once its band completes.
+// The whole widget is themed via CSS custom properties so every theme reuses
+// it. The clock itself lives in useTaskPct — driven by the run lifecycle in
+// OutputPanel — so the octopus busy figure animates in lockstep.
 
-const props = defineProps<{ active: boolean }>()
-
-const { overall, stageProgress, isComplete, start, stop } = useTaskPct()
-
-watch(
-  () => props.active,
-  (active) => {
-    if (active) start()
-    else stop()
-  },
-  { immediate: true },
-)
-
-onUnmounted(() => stop())
+const { overall, stageProgress, isComplete, currentStage } = useTaskPct()
 
 function dasharray(index: number): string {
   const p = stageProgress(index)
@@ -42,7 +28,7 @@ function dasharray(index: number): string {
         :key="stage.key"
         class="task-progress__stage"
         :class="{
-          'is-active': !isComplete(index) && stageProgress(index) > 0,
+          'is-active': currentStage === index && !isComplete(index),
           'is-done': isComplete(index),
         }"
       >

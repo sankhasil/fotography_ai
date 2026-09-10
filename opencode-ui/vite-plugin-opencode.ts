@@ -1,4 +1,5 @@
 import { createWriteStream, existsSync, mkdirSync, rmSync } from 'node:fs'
+import { createConnection } from 'node:net'
 import { join, resolve } from 'node:path'
 import { spawn } from 'node:child_process'
 
@@ -20,6 +21,55 @@ const CONSOLE_DIR = process.env.OPENCODE_CONSOLE_DIR ?? resolve(import.meta.dirn
 const LOG_DIR = join(import.meta.dirname, 'logs')
 
 let spawned: { url: string; close(): void } | null = null
+let proxyProc: ReturnType<typeof spawn> | null = null
+let proxyRestartTimer: ReturnType<typeof setTimeout> | null = null
+
+function log(message: string) {
+  console.error(`[opencode-plugin] ${message}`)
+}
+
+// ponytail: the tool-call proxy is a plain node process owned by the dev server.
+// It dies with vite, which is acceptable because it only serves the qwen2.5-coder
+// model via opencode. On unexpected exit it restarts once after a short delay to
+// survive transient port conflicts. Revisit if the proxy needs to outlive the UI
+// (e.g. CLI usage) — then run it via `npm run ollama-proxy`.
+async function isPortInUse(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = createConnection({ port, host: '127.0.0.1' })
+      .on('connect', () => { server.destroy(); resolve(true) })
+      .on('error', () => resolve(false))
+  })
+}
+
+async function spawnProxy() {
+  if (proxyProc) return
+  if (await isPortInUse(4198)) {
+    log('proxy port 4198 already in use, skipping spawn')
+    return
+  }
+  const script = join(import.meta.dirname, 'tools', 'ollama-tool-call-proxy.mjs')
+  proxyProc = spawn(process.execPath, [script], {
+    env: process.env,
+    stdio: ['ignore', 'ignore', 'pipe'],
+  })
+  proxyProc.stderr?.on('data', (chunk: Buffer) => {
+    process.stderr.write(chunk)
+  })
+  proxyProc.on('exit', (code) => {
+    proxyProc = null
+    if (code !== null && code !== 0 && !proxyRestartTimer) {
+      log(`proxy exited with code ${code}, restarting in 1s`)
+      proxyRestartTimer = setTimeout(() => {
+        proxyRestartTimer = null
+        spawnProxy()
+      }, 1000)
+    }
+  })
+  proxyProc.on('error', (err) => {
+    log(`proxy spawn error: ${err.message}`)
+    proxyProc = null
+  })
+}
 
 function isOnPath(dir: string): boolean {
   return (process.env.PATH ?? '')
@@ -139,6 +189,7 @@ export function opencodeDevFallback(): Plugin {
     name: 'opencode-dev-fallback',
     apply: 'serve',
     configureServer(server) {
+      void spawnProxy()
       server.middlewares.use('/opencode-resolve', async (_req, res) => {
         try {
           const { url } = await ensureServer()
@@ -149,10 +200,18 @@ export function opencodeDevFallback(): Plugin {
           res.end(JSON.stringify({ error: String(error) }))
         }
       })
-      server.httpServer?.on('close', () => spawned?.close())
+      server.httpServer?.on('close', () => {
+        spawned?.close()
+        if (proxyRestartTimer) clearTimeout(proxyRestartTimer)
+        proxyProc?.kill()
+      })
       // ponytail: fallback for shutdown paths where the http server close event
       // does not fire (e.g. crash); close() is idempotent.
-      process.on('exit', () => spawned?.close())
+      process.on('exit', () => {
+        spawned?.close()
+        if (proxyRestartTimer) clearTimeout(proxyRestartTimer)
+        proxyProc?.kill()
+      })
     },
   }
 }

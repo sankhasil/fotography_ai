@@ -3,11 +3,15 @@ import type { Session } from '@opencode-ai/sdk/client'
 
 import type { QuestionRequest } from '@/services/question'
 
-vi.mock('@/services/question', () => ({
-  listQuestions: vi.fn(),
-  replyQuestion: vi.fn(),
-  rejectQuestion: vi.fn(),
-}))
+vi.mock('@/services/question', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/question')>()
+  return {
+    ...actual,
+    listQuestions: vi.fn(),
+    replyQuestion: vi.fn(),
+    rejectQuestion: vi.fn(),
+  }
+})
 
 // usePendingQuestion keeps module-level state and a poll timer, so reset
 // modules per test and shut the timer down by detaching the session.
@@ -152,7 +156,7 @@ describe('usePendingQuestion answering', () => {
 
     await mod.store.answer([['A']])
 
-    expect(mod.replyQuestion).toHaveBeenCalledWith('http://test', 'que-1', [['A']])
+    expect(mod.replyQuestion).toHaveBeenCalledWith('http://test', 'que-1', '/x', [['A']])
     expect(mod.store.pendingQuestion.value).toBeNull()
     expect(mod.store.answering.value).toBe(false)
 
@@ -192,8 +196,29 @@ describe('usePendingQuestion answering', () => {
 
     await mod.store.dismiss()
 
-    expect(mod.rejectQuestion).toHaveBeenCalledWith('http://test', 'que-1')
+    expect(mod.rejectQuestion).toHaveBeenCalledWith('http://test', 'que-1', '/x')
     expect(mod.store.pendingQuestion.value).toBeNull()
+
+    mod.setSession(null)
+  })
+
+  it('clears the card silently when the server reports the question is gone', async () => {
+    const mod = await load()
+    mod.setUrl('http://test')
+    const { QuestionNotFoundError } = await import('@/services/question')
+    mod.replyQuestion.mockRejectedValue(new QuestionNotFoundError('que-1'))
+    mod.listQuestions.mockResolvedValue([request('ses-1')])
+
+    mod.setSession(session('ses-1', '/x'))
+    await vi.waitFor(() => {
+      expect(mod.store.pendingQuestion.value).not.toBeNull()
+    })
+
+    await mod.store.answer([['A']])
+
+    expect(mod.store.questionError.value).toBeNull()
+    expect(mod.store.pendingQuestion.value).toBeNull()
+    expect(mod.store.answering.value).toBe(false)
 
     mod.setSession(null)
   })

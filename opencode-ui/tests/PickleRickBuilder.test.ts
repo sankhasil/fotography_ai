@@ -17,12 +17,13 @@ async function setPct(value: number): Promise<void> {
 }
 
 describe('PickleRickBuilder', () => {
-  it('renders the pickle figure with its face and lab-coat arms', () => {
+  it('renders the pickle figure with the image head and its attached bubble', () => {
     const wrapper = mount(PickleRickBuilder)
     expect(wrapper.find('.cartoony-builder').exists()).toBe(true)
-    expect(wrapper.find('.pickle-rick').exists()).toBe(true)
-    expect(wrapper.find('.pickle-glass').exists()).toBe(true)
-    expect(wrapper.find('.pickle-grin').exists()).toBe(true)
+    expect(wrapper.find('.pickle-rick--head').exists()).toBe(true)
+    expect(wrapper.find('.pickle-upper').exists()).toBe(true)
+    expect(wrapper.find('.pickle-head').exists()).toBe(true)
+    expect(wrapper.find('.pickle-bubble').exists()).toBe(true)
     expect(wrapper.find('.pickle-arm').exists()).toBe(true)
     expect(wrapper.find('.builder-stage--thinking').exists()).toBe(true)
   })
@@ -32,5 +33,16 @@ describe('PickleRickBuilder', () => {
     const wrapper = mount(PickleRickBuilder)
     expect(wrapper.find('.builder-stage--building').exists()).toBe(true)
     expect(wrapper.find('.pickle-hat').exists()).toBe(true)
+  })
+
+  it('switches the head scene through every progress phase', async () => {
+    await setPct(10)
+    expect(mount(PickleRickBuilder).find('.builder-stage--thinking').exists()).toBe(true)
+    await setPct(30)
+    expect(mount(PickleRickBuilder).find('.builder-stage--checking').exists()).toBe(true)
+    await setPct(60)
+    expect(mount(PickleRickBuilder).find('.builder-stage--building').exists()).toBe(true)
+    await setPct(90)
+    expect(mount(PickleRickBuilder).find('.builder-stage--responding').exists()).toBe(true)
   })
 })

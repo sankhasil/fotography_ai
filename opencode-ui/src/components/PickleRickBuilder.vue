@@ -6,7 +6,7 @@ import PickleRickFigure from '@/components/figures/PickleRickFigure.vue'
 <template>
   <BuilderScene label="Pickle Rick is working on your answer">
     <template #default="{ scene, hat }">
-      <PickleRickFigure :scene="scene" :hat="hat" />
+      <PickleRickFigure :scene="scene" :hat="hat" head="image" />
     </template>
   </BuilderScene>
 </template>

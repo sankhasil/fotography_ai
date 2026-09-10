@@ -4,6 +4,7 @@ import { useOpenCode } from '@/composables/useOpenCode'
 import { useSession } from '@/composables/useSession'
 import {
   listQuestions,
+  QuestionNotFoundError,
   rejectQuestion,
   replyQuestion,
   type QuestionInfo,
@@ -82,17 +83,34 @@ watch(
   { immediate: true },
 )
 
+// A lost connection usually means the server restarted, which drops all pending
+// question requests (they are in-memory per process). Clear the card so a stale
+// request is never submitted; the poll re-finds it if it still exists.
+watch(
+  () => opencode.status.value,
+  (status) => {
+    if (status === 'offline') pendingQuestion.value = null
+  },
+)
+
 async function answer(answers: string[][]): Promise<void> {
   const url = opencode.url.value
   const request = pendingQuestion.value
+  const directory = session.activeSession.value?.directory ?? null
   if (!url || !request || answering.value) return
   answering.value = true
   questionError.value = null
   try {
-    await replyQuestion(url, request.id, answers)
+    await replyQuestion(url, request.id, directory, answers)
     // Optimistic clear; the next poll confirms the request left the server.
     pendingQuestion.value = null
   } catch (error) {
+    if (error instanceof QuestionNotFoundError) {
+      // Stale request: the server already resolved it (answered elsewhere or
+      // restarted). Drop the card instead of surfacing an error.
+      pendingQuestion.value = null
+      return
+    }
     questionError.value = error instanceof Error ? error.message : String(error)
   } finally {
     answering.value = false
@@ -102,13 +120,18 @@ async function answer(answers: string[][]): Promise<void> {
 async function dismiss(): Promise<void> {
   const url = opencode.url.value
   const request = pendingQuestion.value
+  const directory = session.activeSession.value?.directory ?? null
   if (!url || !request || answering.value) return
   answering.value = true
   questionError.value = null
   try {
-    await rejectQuestion(url, request.id)
+    await rejectQuestion(url, request.id, directory)
     pendingQuestion.value = null
   } catch (error) {
+    if (error instanceof QuestionNotFoundError) {
+      pendingQuestion.value = null
+      return
+    }
     questionError.value = error instanceof Error ? error.message : String(error)
   } finally {
     answering.value = false
