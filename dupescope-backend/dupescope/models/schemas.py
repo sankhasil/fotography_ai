@@ -8,6 +8,10 @@ class ScanRequest(BaseModel):
     recursive: bool = True
     ai_cull: bool = False
     auto_archive: bool = False
+    # ponytail: provider/model are intentionally NOT request fields. They are
+    # read from the [llm] section of dupescope.toml so a job cannot silently
+    # run against a different model than the one the operator configured.
+    # Add them here only if a UI genuinely needs a per-job override.
     limit: int = Field(default=100, ge=1, le=10000)
     offset: int = Field(default=0, ge=0)
     test_mode: bool = False

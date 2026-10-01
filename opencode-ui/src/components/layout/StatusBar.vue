@@ -6,7 +6,7 @@ import { useAppStore } from '@/composables/useAppStore'
 const props = defineProps<{ eventsVisible: boolean; lastEventAt: number | null }>()
 defineEmits<{ (e: 'toggle-events'): void }>()
 
-const { status, error, connect, formattedRemaining, formattedUsed, usagePercent, warningLevel } =
+const { status, error, connect, formattedRemaining, usagePercent, warningLevel } =
   useAppStore()
 
 const now = ref(Date.now())

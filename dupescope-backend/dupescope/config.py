@@ -22,6 +22,8 @@ class DupeScopeConfig:
     ssim_threshold: float = 0.8
     hash_threshold: int = 10
     burst_gap_seconds: int = 3
+    llm_provider: str = 'ollama-local'
+    llm_model: str = 'llava'
 
 
 def load_config(path: str = 'dupescope.toml') -> DupeScopeConfig:
@@ -54,6 +56,7 @@ def save_config(config: DupeScopeConfig, path: str = 'dupescope.toml') -> None:
         'faces': ['face_model', 'face_weight'],
         'pipeline': ['device', 'keep_threshold', 'burst_gap_seconds'],
         'cache': ['cache_dir'],
+        'llm': ['llm_provider', 'llm_model'],
     }
 
     for section, keys in sections.items():

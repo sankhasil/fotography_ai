@@ -31,11 +31,11 @@ from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnec
 from fastapi.middleware.cors import CORSMiddleware
 
 from dupescope.archive.storage import JobStore
+from dupescope.config import load_config
 from dupescope.core import (
     scan_images,
     fmt_bytes,
 )
-from dupescope.llm import OLLAMA_MODEL, OLLAMA_URL
 from dupescope.pipeline.context import PipelineContext
 from dupescope.pipeline.engine import PipelineEngine
 from dupescope.pipeline.stages import (
@@ -242,6 +242,8 @@ def _run_job(job_id: str) -> None:
     ai_cull = job.get("ai_cull", False)
     auto_archive = job.get("auto_archive", False)
     images = [Path(meta["path"]) for meta in job_photos.get(job_id, {}).values()]
+    cfg = load_config()
+    llm = {"provider": cfg.llm_provider, "model": cfg.llm_model}
 
     def on_progress(done: int, total: int) -> None:
         emit_event(job_id, "photo_done", {"done": done, "total": total})
@@ -260,6 +262,8 @@ def _run_job(job_id: str) -> None:
             "photos": job_photos.get(job_id, {}),
             "cache_lock": cache_lock,
             "on_progress": on_progress,
+            "llm_provider": llm["provider"],
+            "llm_model": llm["model"],
         },
     )
 
@@ -464,6 +468,10 @@ async def start_scan(req: ScanRequest):
         ai_cull=req.ai_cull,
         auto_archive=req.auto_archive,
     )
+
+    # Provider and model come from dupescope.toml in _run_job. No per-job
+    # override: a scan must not silently run against a model the operator
+    # did not configure.
 
     with queue_lock:
         queue.append(job_id)

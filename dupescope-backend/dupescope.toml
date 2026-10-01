@@ -22,3 +22,11 @@ burst_gap_seconds = 3
 
 [cache]
 cache_dir = ".dupescope"
+
+[llm]
+# Provider is a name (ollama-local) or a base URL for any OpenAI-compatible
+# local server (LM Studio, llama.cpp, vLLM, Ollama's own /v1).
+llm_provider = "ollama-local"
+
+# Must be a vision-capable model. Run --list-models to see which are installed.
+llm_model = "llava"

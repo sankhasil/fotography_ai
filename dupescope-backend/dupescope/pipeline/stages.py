@@ -137,10 +137,17 @@ class LLMReasonStage:
         reasons: dict[str, str] = {}
         on_progress = ctx.config.get("on_progress")
         total = len(ctx.images)
+        llm_provider = ctx.config.get("llm_provider")
+        llm_model = ctx.config.get("llm_model")
 
         for index, path in enumerate(ctx.images):
             path_str = str(path)
-            reasons[path_str] = explain_photo(path, keep=path_str in keep_paths)
+            reasons[path_str] = explain_photo(
+                path,
+                keep=path_str in keep_paths,
+                provider=llm_provider,
+                model=llm_model,
+            )
             if on_progress:
                 on_progress(index + 1, total)
 
@@ -237,19 +244,24 @@ class ArchiveStage:
 
         return StageResult(
             stage_name=self.name,
-            data={"archived": len(archive_log)},
+            data={"archived": len(archive_log), "archive_log": archive_log},
         )
 
     def rollback(self, ctx: PipelineContext) -> None:
         """Restore files from _ARCHIVED/ back to original locations."""
-        quality = ctx.results.get("archive")
-        if not quality:
+        stage = ctx.results.get(self.name)
+        if not stage:
             return
-        for entry in quality.data.get("archive_log", []):
+        for entry in stage.data.get("archive_log", []):
+            if "from" not in entry or "to" not in entry:
+                continue
             try:
-                src = Path(entry.get("to", ""))
-                dst = Path(entry.get("from", ""))
-                if src.exists():
+                src = Path(entry["to"])
+                dst = Path(entry["from"])
+                if src.exists() and not dst.exists():
                     shutil.move(str(src), str(dst))
-            except Exception:
-                pass
+            except Exception as e:
+                # ponytail: rollback is best-effort — a file already restored
+                # by hand must not abort the remaining ones. Surfaced so a
+                # partial undo is visible instead of silent.
+                print(f"[WARN] Could not restore {entry.get('to')}: {e}")

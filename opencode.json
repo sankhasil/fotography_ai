@@ -3,7 +3,7 @@
   "model": "ollama/hhao/qwen2.5-coder-tools:7b",
   "small_model": "ollama/hhao/qwen2.5-coder-tools:7b",
   "share": "disabled",
-  "provider": {
+    "provider": {
     "ollama": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "Ollama (tool-call proxy)",
@@ -24,7 +24,7 @@
         "baseURL": "https://llm-server.llmhub.t-systems.net/v2",
         "apiKey": "{env:TSYSTEMS_OPENCODE_API_KEY}"
       },
-      "models": {"GLM-5.2":{"name":"GLM 5.2 (Premium, Euro1.50/Euro3.50)","limit":{"context":1000000,"output":1000000}},"Mistral-Small-4-119B-2603":{"name":"Mistral Small 4 119B Instruct","limit":{"context":262144,"output":128000}},"NVIDIA-Nemotron-3-Super-120B-A12B-FP8":{"name":"NVIDIA Nemotron 3 Super 120B FP8 (Moderate cost, Euro0.60/Euro1.20)","limit":{"context":256000,"output":256000}},"Qwen3.6-35B-A3B-FP8":{"name":"Qwen 3.6 35B FP8 (Moderate cost, Euro0.60/Euro1.20)","limit":{"context":262144,"output":262144}},"claude-opus-4.8":{"name":"Claude Opus 4.8 (Very high cost, Euro4.95/Euro24.75)","limit":{"context":1000000,"output":128000}},"claude-sonnet-4.6":{"name":"Claude 4.6 Sonnet (High cost, Euro2.97/Euro14.85)","limit":{"context":1000000,"output":64000}},"gemini-3.1-pro":{"name":"Gemini 3.1 Pro (High cost, Euro3.60/Euro16.20)","limit":{"context":1048576,"output":65536}},"gemini-3.5-flash":{"name":"Gemini 3.5 Flash (Moderate cost, Euro1.49/Euro8.91)","limit":{"context":1048576,"output":65536}},"gpt-5.4":{"name":"GPT 5.4 (High cost, Euro2.42/Euro14.49)","limit":{"context":1000000,"output":128000}},"gpt-oss-120b":{"name":"GPT OSS 120B (Euro0.20/Euro0.65)","limit":{"context":131072,"output":0}},"jina-embeddings-v2-base-code":{"name":"Jina Embeddings v2 Base Code (Euro0.05/Euro0.05)","limit":{"context":8192,"output":0}},"jina-embeddings-v2-base-de":{"name":"Jina Embeddings v2 Base DE (Euro0.05/Euro0.05)","limit":{"context":8192,"output":0}},"text-embedding-bge-m3":{"name":"Embedding BGE M3","limit":{"context":8192,"output":0}}}
+      "models": {"GLM-5.2":{"name":"GLM 5.2 (Premium, Euro1.50/Euro3.50) [health: UP, 24h 98%]","limit":{"context":1000000,"output":1000000}},"Mistral-Small-4-119B-2603":{"name":"Mistral Small 4 119B Instruct [health: UP, 24h 100%]","limit":{"context":262144,"output":128000}},"NVIDIA-Nemotron-3-Super-120B-A12B-FP8":{"name":"NVIDIA Nemotron 3 Super 120B FP8 (Moderate cost, Euro0.60/Euro1.20) [health: UP, 24h 100%]","limit":{"context":256000,"output":256000}},"Qwen3.6-35B-A3B-FP8":{"name":"Qwen 3.6 35B FP8 (Moderate cost, Euro0.60/Euro1.20) [health: UP, 24h 100%]","limit":{"context":262144,"output":262144}},"gpt-oss-120b":{"name":"GPT OSS 120B (Euro0.20/Euro0.65) [health: UP, 24h 38%]","limit":{"context":131072,"output":0}},"jina-embeddings-v2-base-code":{"name":"Jina Embeddings v2 Base Code (Euro0.05/Euro0.05) [health: UP, 24h 100%]","limit":{"context":8192,"output":0}},"jina-embeddings-v2-base-de":{"name":"Jina Embeddings v2 Base DE (Euro0.05/Euro0.05) [health: UP, 24h 100%]","limit":{"context":8192,"output":0}},"text-embedding-bge-m3":{"name":"Embedding BGE M3 [health: UP, 24h 100%]","limit":{"context":8192,"output":0}}}
     }
   },
   "mcp": {

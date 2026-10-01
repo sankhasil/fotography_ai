@@ -108,7 +108,7 @@ function switchModel(index: number): void {
             </p>
             <div class="flex flex-wrap gap-2">
               <button
-                v-for="(m, index) in largerModels.slice(0, 3)"
+                v-for="m in largerModels.slice(0, 3)"
                 :key="m.modelID"
                 type="button"
                 class="rounded border border-[var(--border)] bg-[var(--bg)] px-2 py-1 text-xs hover:bg-[var(--bg-secondary)] transition-colors"

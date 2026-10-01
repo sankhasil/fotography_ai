@@ -19,7 +19,7 @@ import os
 import hashlib
 import json
 import io
-import requests
+import re
 import argparse
 import sys
 import base64
@@ -60,8 +60,14 @@ EXTS     = {'.jpg','.jpeg','.png','.gif','.bmp','.webp','.tiff','.tif','.heic','
 RAW_EXTS = {'.dng','.arw','.raw','.cr2','.nef','.orf','.raf','.rw2'}
 ALL_EXTS = EXTS | RAW_EXTS
 
-# ── Ollama URL ────────────────────────────────────────────────────────────────
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+# ── LLM provider (configured via the [llm] section of dupescope.toml) ─────────
+from dupescope.providers import (
+    DEFAULT_MODEL as LLM_MODEL,
+    DEFAULT_PROVIDER,
+    chat,
+    list_models,
+    resolve,
+)
 
 # ── Quality thresholds (tune for your library) ────────────────────────────────
 BLUR_THRESHOLD        = 80.0   # Laplacian variance — below = blurry
@@ -555,15 +561,36 @@ def encode_image(path: Path, max_size: int = 768) -> str:
         return ""
 
 
-def evaluate_image_ai(path: Path, local_metrics: dict) -> dict:
+# ponytail: Models trained on LaTeX-flavoured text emit LaTeX escapes — LLaVA
+# returns "emotion\_impact", and "\_" is not a legal JSON escape, so json.loads
+# rejects the whole verdict. Stripping backslashes from characters JSON does not
+# define fixes it without touching the eight escapes it does define.
+_BAD_JSON_ESCAPE = re.compile(r'\\([^"\\/bfnrtu])')
+
+
+def strip_bad_escapes(text: str) -> str:
+    return _BAD_JSON_ESCAPE.sub(r"\1", text)
+
+
+def evaluate_image_ai(path: Path, local_metrics: dict,
+                      provider: str | None = None,
+                      model: str | None = None) -> dict | None:
     """
-    Call LLaVA with temperature=0 and seed=42.
-    These two settings make LLaVA deterministic — same image,
-    same result every time. Without them, results vary per run.
+    Ask the provider for a structured verdict.
+
+    temperature=0 and seed=42 request determinism but do not deliver it:
+    llava on ollama-local returned a usable verdict on only 1 of 4 identical
+    calls. A verdict that cannot be obtained returns None so the caller can
+    record the failure instead of scoring a fabricated neutral.
+
+    ponytail: num_predict=200 truncated longer JSON replies mid-object, which
+    json.loads then rejected. 512 leaves headroom for a full verdict without
+    inviting rambling. Lower it if local models start ignoring the schema.
     """
     encoded = encode_image(path)
     if not encoded:
-        return {}
+        print(f"\n[WARN] Could not encode image: {path.name}")
+        return None
 
     context = (
         f"Local analysis: sharpness={local_metrics.get('sharpness','?')}/10, "
@@ -571,30 +598,18 @@ def evaluate_image_ai(path: Path, local_metrics: dict) -> dict:
         f"Focus only on artistic/compositional quality."
     )
 
-    payload = {
-        "model": "llava",
-        "options": {
-            "temperature": 0,    # KEY: makes output deterministic
-            "seed": 42,          # KEY: extra determinism guarantee
-            "num_predict": 200,
-        },
-        "messages": [
-            {"role": "system", "content": VISION_PROMPT},
-            {
-                "role": "user",
-                "content": f"{context}\n\nReturn ONLY the JSON object.",
-                "images": [encoded],
-            },
-        ],
-        "stream": False,
-    }
+    raw = chat(
+        resolve(provider), model or LLM_MODEL,
+        f"{context}\n\nReturn ONLY the JSON object.",
+        image_b64=encoded, system=VISION_PROMPT, fallback="",
+        temperature=0, seed=42, num_predict=512,
+    )
+    if not raw:
+        print(f"\n[WARN] Provider returned nothing for {path.name}")
+        return None
 
     try:
-        res = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=120)
-        res.raise_for_status()
-        raw = res.json()["message"]["content"].strip()
-
-        cleaned = raw
+        cleaned = strip_bad_escapes(raw)
         if "```" in cleaned:
             for part in cleaned.split("```"):
                 part = part.strip().removeprefix("json").strip()
@@ -605,12 +620,12 @@ def evaluate_image_ai(path: Path, local_metrics: dict) -> dict:
         start = cleaned.find("{")
         end   = cleaned.rfind("}") + 1
         if start == -1 or end == 0:
-            return {}
+            print(f"\n[WARN] No JSON object in reply for {path.name}")
+            return None
         return json.loads(cleaned[start:end])
-
     except Exception as e:
-        print(f"\n[WARN] AI eval failed for {path.name}: {e}")
-        return {}
+        print(f"\n[WARN] Could not parse AI verdict for {path.name}: {e}")
+        return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -630,6 +645,7 @@ def compute_hybrid_score(local: dict, ai: dict) -> dict:
       - Both agree delete → delete
       - Disagree → use hybrid score threshold (5.5)
     """
+    ai_verdict  = ai is not None
     local_score = local.get("overall_local", 5.0)
     ai_score    = sum([
         ai.get("composition",    5),
@@ -640,10 +656,16 @@ def compute_hybrid_score(local: dict, ai: dict) -> dict:
 
     hybrid     = local_score * 0.70 + ai_score * 0.30
     local_keep = local.get("keep_local", True)
-    ai_keep    = ai.get("keep", True) if ai else True
+    ai_keep    = ai.get("keep", True) if ai_verdict else True
 
     if local.get("_is_blurry"):
         final_keep = False
+    elif not ai_verdict:
+        # No verdict to weigh. Trust the deterministic local check and never
+        # invent a neutral score — a fabricated 5.0 reads as "average" in the
+        # report but means "never analysed", which is how 37 photos were
+        # silently scored last run.
+        final_keep = local_keep
     elif not local_keep and not ai_keep:
         final_keep = False
     elif local_keep and ai_keep:
@@ -653,17 +675,19 @@ def compute_hybrid_score(local: dict, ai: dict) -> dict:
 
     return {
         "local_score":  round(local_score, 1),
-        "ai_score":     round(ai_score, 1),
-        "hybrid_score": round(hybrid, 1),
+        "ai_score":     round(ai_score, 1) if ai_verdict else None,
+        "hybrid_score": round(hybrid, 1) if ai_verdict else None,
         "keep":         final_keep,
+        "ai_verdict":   ai_verdict,
         "sharpness":    local.get("sharpness"),
         "exposure":     local.get("exposure"),
         "noise":        local.get("noise"),
         "subject":      local.get("subject"),
-        "composition":  ai.get("composition"),
-        "emotion":      ai.get("emotion_impact"),
-        "aesthetic":    ai.get("aesthetic"),
-        "reason":       ai.get("reason", local.get("source", "")),
+        "composition":  ai.get("composition") if ai_verdict else None,
+        "emotion":      ai.get("emotion_impact") if ai_verdict else None,
+        "aesthetic":    ai.get("aesthetic") if ai_verdict else None,
+        "reason":       ai.get("reason", "") if ai_verdict
+                       else "no AI verdict — scored on local metrics only",
         "path":         local.get("path"),
         "name":         local.get("name"),
         "_laplacian":   local.get("_laplacian_var"),
@@ -672,12 +696,13 @@ def compute_hybrid_score(local: dict, ai: dict) -> dict:
     }
 
 
-def ai_cull(images: list, run_ai: bool = True) -> tuple:
+def ai_cull(images: list, run_ai: bool = True, provider: str | None = None,
+            model: str | None = None) -> tuple:
     """
     Full pipeline:
       1. Local quality metrics on all images (deterministic, fast)
       2. Clear rejects/keeps bypass AI entirely
-      3. Borderline images go to LLaVA with temperature=0
+      3. Borderline images go to the vision model with temperature=0
       4. Hybrid score makes final decision
     """
     print("\n  Phase A — Local quality analysis (OpenCV)...")
@@ -687,16 +712,25 @@ def ai_cull(images: list, run_ai: bool = True) -> tuple:
           f"{len(needs_ai)} need AI review\n")
 
     ai_results = []
+    no_verdict = 0
     if run_ai and needs_ai:
-        print(f"  Phase B — AI review ({len(needs_ai)} borderline images)...")
+        target = resolve(provider)
+        used_model = model or LLM_MODEL
+        print(f"  Phase B — AI review via {target.name}/{used_model} "
+              f"({len(needs_ai)} borderline images, billed per image)")
         for i, local_q in enumerate(needs_ai):
             p = Path(local_q["path"])
             sys.stdout.write(f"\r  AI [{i+1}/{len(needs_ai)}] {p.name[:45]}")
             sys.stdout.flush()
-            ai_q     = evaluate_image_ai(p, local_q)
+            ai_q     = evaluate_image_ai(p, local_q, provider, model)
+            if ai_q is None:
+                no_verdict += 1
             combined = compute_hybrid_score(local_q, ai_q)
             ai_results.append(combined)
         print()
+        if no_verdict:
+            print(f"  [WARN] {no_verdict} of {len(needs_ai)} photos got no AI "
+                  f"verdict and were scored on local metrics only.\n")
     else:
         for local_q in needs_ai:
             local_q["keep"]   = local_q.get("keep_local", True)
@@ -705,7 +739,8 @@ def ai_cull(images: list, run_ai: bool = True) -> tuple:
 
     all_results = clear_keep + clear_delete + ai_results
     all_results.sort(
-        key=lambda x: x.get("hybrid_score", x.get("overall_local", 5)),
+        key=lambda x: (x.get("hybrid_score") if x.get("hybrid_score") is not None
+                       else x.get("overall_local", 5)),
         reverse=True
     )
     return (
@@ -772,6 +807,10 @@ def build_report(folder, images, exact, perceptual, bursts, keep, delete, args) 
             "local_rejects":     sum(1 for r in delete if r.get("source")=="local_reject"),
             "ai_rejects":        sum(1 for r in delete if r.get("source") not in
                                      ("local_reject","local_keep")),
+            # ponytail: counted rather than silently defaulted, so a degraded
+            # run is visible in the report instead of hiding as "average".
+            "no_ai_verdict":    sum(1 for r in keep + delete
+                                     if r.get("ai_verdict") is False),
         },
         "exact_groups": exact_groups,
         "similar_groups": similar_groups,
@@ -795,6 +834,9 @@ Examples:
   python dupescope.py ~/Pictures --no-ai          # local metrics only, no LLaVA
   python dupescope.py ~/Pictures --no-ssim        # faster, skip SSIM confirmation
   python dupescope.py ~/Pictures --burst-gap 5    # group bursts within 5 seconds
+
+Provider and model are set in dupescope.toml ([llm] section), not on the
+command line, so there is only one place they are configured.
         """
     )
     ap.add_argument("folder")
@@ -809,7 +851,9 @@ Examples:
     ap.add_argument("--no-ssim",    action="store_true",
                     help="Skip SSIM confirmation (faster, more false positives)")
     ap.add_argument("--burst-gap",  type=int, default=3,
-                    help="Max seconds between burst shots (default 3)")
+                     help="Max seconds between burst shots (default 3)")
+    ap.add_argument("--list-models", action="store_true",
+                     help="List vision-capable models for the provider and exit")
 
     args = ap.parse_args()
 
@@ -817,6 +861,30 @@ Examples:
         print(BANNER)
         if not OPENCV:  print("  [WARN] opencv-python not installed — quality metrics disabled")
         if not SKIMAGE: print("  [WARN] scikit-image not installed  — SSIM disabled\n")
+
+    from dupescope.config import load_config
+
+    cfg = load_config("dupescope.toml")
+
+    # Provider and model come from dupescope.toml only. A CLI flag would be a
+    # second place to configure the same thing and would silently win over the
+    # file. Edit the [llm] section instead.
+    provider_name = cfg.llm_provider or DEFAULT_PROVIDER
+    model_name    = cfg.llm_model    or DEFAULT_MODEL
+
+    try:
+        target = resolve(provider_name)
+    except ValueError as e:
+        print(f"[error] {e}"); sys.exit(1)
+
+    if args.list_models:
+        models = list_models(target)
+        print(f"Vision-capable models for {target.name} ({target.base_url}):")
+        for m in models:
+            print(f"  - {m}")
+        if not models:
+            print("  (none found or provider unreachable)")
+        sys.exit(0)
 
     folder = Path(args.folder).expanduser().resolve()
     if not folder.exists() or not folder.is_dir():
@@ -846,7 +914,8 @@ Examples:
     print(f"      → {len(bursts)} burst group(s)\n")
 
     print("[4/4] Quality culling (local + AI hybrid)")
-    keep, delete = ai_cull(images, run_ai=not args.no_ai)
+    keep, delete = ai_cull(images, run_ai=not args.no_ai,
+                           provider=provider_name, model=model_name)
     print(f"      → keep {len(keep)}, delete {len(delete)}\n")
 
     report   = build_report(folder, images, exact, perceptual, bursts, keep, delete, args)
@@ -862,6 +931,7 @@ Examples:
     print(f"  Burst groups        : {s['burst_groups']:>6}")
     print(f"  Reclaimable (exact) : {s['reclaimable_exact']:>6}")
     print(f"  Quality keep        : {s['quality_keep']:>6}")
+    print(f"  No AI verdict       : {s['no_ai_verdict']:>6}")
     print(f"  Quality delete      : {s['quality_delete']:>6}")
     print(f"    └ local rejects   : {s['local_rejects']:>6}  (blurry / bad exposure)")
     print(f"    └ AI rejects      : {s['ai_rejects']:>6}  (composition / aesthetic)")

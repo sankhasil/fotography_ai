@@ -1,0 +1,2 @@
+- [DupeScope known gaps](dupescope-known-gaps.md) — two accepted defects plus the toml-only provider decision not to undo
+- [DupeScope archive workflow](dupescope-archive-workflow.md) — 13 photos in _ARCHIVED, how to undo, never delete

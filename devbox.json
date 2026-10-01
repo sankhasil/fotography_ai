@@ -21,15 +21,18 @@
       "[ -f .env ] && set -a && source .env && set +a",
       "echo ''",
       "echo '📦 Commands:'",
-      "echo '   devbox run start        → Backend (port 5000) + Frontend (port 5173)'",
-      "echo '   devbox run test         → Run e2e tests'",
-      "echo '   devbox run checkai      → Check Ollama + AI prerequisites'",
-      "echo '   devbox run stack help   → Docker stack (Open WebUI, SearXNG, etc.)'",
+      "echo '   devbox run start            → Backend (port 5000) + Frontend (port 5173)'",
+      "echo '   devbox run test             → Run e2e tests'",
+      "echo '   devbox run checkai          → Check OpenCode + Ponytail prerequisites (pass --ollama to also check Ollama)'",
+      "echo '   devbox run opencode         → Launch OpenCode (Ollama skipped by default)'",
+      "echo '   devbox run opencode-ollama  → Launch OpenCode with Ollama auto-start'",
+      "echo '   devbox run stack help       → Docker stack (Open WebUI, SearXNG, etc.)'",
       "echo ''",
       "start()    { devbox run start; }",
       "test()     { devbox run test; }",
       "stack()    { devbox run stack \"$@\"; }",
       "opencode() { devbox run opencode \"$@\"; }",
+      "opencode-ollama() { devbox run opencode-ollama \"$@\"; }",
       "pr-review() { devbox run pr-review \"$@\"; }"
     ],
     "scripts": {
@@ -44,7 +47,7 @@
         "echo 'Starting Python backend...'",
         "source dupescope-backend/.venv/bin/activate",
         "pkill -f dupescope-backend/server.py || true",
-        "if curl -sf --max-time 2 http://localhost:11434/api/tags >/dev/null 2>&1; then echo '✓ Ollama already running'; else echo '⚠ Ollama not running (AI chat unavailable)'; fi",
+        "if curl -sf --max-time 2 http://localhost:11434/api/tags >/dev/null 2>&1; then echo '✓ Ollama already running'; else echo 'ℹ Ollama not running — backend will use cloud models only (use opencode-ollama to enable local)'; fi",
         "python dupescope-backend/server.py"
       ],
 
@@ -58,11 +61,15 @@
       ],
 
       "checkai": [
-        "bash scripts/check_prereqs.sh"
+        "bash scripts/check_prereqs.sh $@"
       ],
 
       "opencode": [
         "bash scripts/opencode.sh $@"
+      ],
+
+      "opencode-ollama": [
+        "bash scripts/opencode.sh --ollama $@"
       ],
 
       "pr-review": [

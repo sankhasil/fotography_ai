@@ -264,6 +264,20 @@ Example generated entries:
 
 This warning is informational only. It does not block model usage.
 
+### Colibri Configuration
+
+> **NOT usable until 32 GB RAM.** DeepSeek V4 Flash via Colibri requires a 32 GB machine. This Mac has 16 GB, so the `colibri` provider is deliberately **not generated** into `opencode.json` by `scripts/opencode.sh`, and no Colibri server is started.
+
+To re-enable on a 32 GB+ machine:
+
+- Colibri cloned under `~/PersonalCodes/colibri/`
+- DeepSeek V4 Flash downloaded under `~/PersonalCodes/DeepSeek-V4-Flash/` (use `git lfs install && git lfs pull` after `git clone`)
+- DeepSeek V4 engine built once:
+  ```bash
+  make -C ~/PersonalCodes/colibri/c deepseek-v4
+  ```
+- Re-add the `colibri` provider block and Colibri startup logic in `scripts/opencode.sh`.
+
 ### Updating The Pricing Map
 
 The pricing labels are maintained in `scripts/opencode.sh`. Update that table when Telekom changes model names, token prices, or context window limits.

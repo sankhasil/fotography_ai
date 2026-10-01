@@ -14,12 +14,16 @@ function dasharray(index: number): string {
   const p = stageProgress(index)
   return `${p} ${100 - p}`
 }
+
+function roundedOverall(): number {
+  return Math.round(overall.value)
+}
 </script>
 
 <template>
   <div class="task-progress">
     <div class="task-progress__overall">
-      <span class="task-progress__pct">{{ overall }}</span>
+      <span class="task-progress__pct">{{ roundedOverall() }}</span>
       <span class="task-progress__unit">%</span>
     </div>
     <div class="task-progress__stages">

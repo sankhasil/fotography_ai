@@ -226,6 +226,8 @@ __marimo__/
 .streamlit/secrets.toml
 *_report.json
 *-summary.json
+*_refactor.json
+*_manifest.json
 .DS_Store
 
 #opencode

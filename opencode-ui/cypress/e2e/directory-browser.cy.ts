@@ -198,7 +198,7 @@ describe('directory browser', () => {
   })
 
   it('cancels without changing the directory', () => {
-    cy.get('button').contains('Cancel').click()
+    cy.get('[role="dialog"] button').contains('Cancel').click()
     cy.get('[role="dialog"]').should('not.exist')
   })
 

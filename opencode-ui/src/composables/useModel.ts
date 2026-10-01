@@ -8,8 +8,53 @@ export interface ModelSelection {
 
 export interface ModelOption extends ModelSelection {
   modelName: string
+  providerName?: string
   contextLimit: number
   outputLimit: number
+}
+
+// ponytail: Local opencode.json config for defining and augmenting model metadata.
+interface ModelConfig {
+  name: string
+  limit?: { context: number; output: number }
+}
+
+interface ProviderConfig {
+  name: string
+  models: Record<string, ModelConfig>
+}
+
+interface OpencodeConfig {
+  provider: Record<string, ProviderConfig>
+}
+
+// ponytail: Cache opencode.json locally to persist across refreshes without re-fetching.
+// Static import ensures opencode.json is bundled and always available (fetch would 404
+// because Vite only serves /public, not the project root). Dynamic import keeps
+// the bundle valid even if the file is missing in some environments.
+let opencodeConfig: OpencodeConfig | null = null
+
+export function __resetModelConfig(): void {
+  opencodeConfig = null
+}
+
+async function loadOpencodeConfig(): Promise<OpencodeConfig | null> {
+  if (opencodeConfig) return opencodeConfig
+  try {
+    // ponytail: Prefer static bundled copy; fetch fallback for live edits in dev.
+    const mod = await import('../../opencode.json')
+    opencodeConfig = (mod.default ?? mod) as OpencodeConfig
+    return opencodeConfig
+  } catch {
+    // ponytail: Fallback to fetch for environments where static import is not available.
+    try {
+      const res = await fetch('/opencode.json')
+      if (res.ok) opencodeConfig = await res.json()
+    } catch {
+      // ponytail: opencode.json might not be served in test environments; ignore.
+    }
+  }
+  return opencodeConfig
 }
 
 const MODEL_KEY = 'opencode-ui:model'
@@ -65,40 +110,76 @@ function persist(): void {
 }
 
 async function refresh(client: OpencodeClient): Promise<void> {
+  const config = await loadOpencodeConfig()
+  
+  // ponytail: Start with API models only from free providers.
+  const apiModels: ModelOption[] = []
   try {
     const result = await client.provider.list()
     const providers = result.data?.all ?? []
-    options.value = providers
-      .filter((provider) => FREE_PROVIDER_IDS.has(provider.id))
-      .flatMap((provider) =>
-        Object.values(provider.models ?? {}).map((model) => ({
-          providerID: provider.id,
-          providerName: provider.name,
-          modelID: model.id,
-          modelName: model.name,
-          contextLimit: model.limit?.context ?? 128000,
-          outputLimit: model.limit?.output ?? 4096,
-        })),
-      )
-    const stored = readStored()
-    const matches = stored
-      ? options.value.some(
-          (o) => o.providerID === stored.providerID && o.modelID === stored.modelID,
-        )
-      : false
-    // ponytail: default to the first free Zen model so a fresh UI never falls
-    // back to a broken console default (e.g. a local ollama that 500s when the
-    // daemon is down). The stored selection wins when it still exists.
-    const fallback = options.value[0]
-    selected.value = matches
-      ? stored
-      : fallback
-        ? { providerID: fallback.providerID, modelID: fallback.modelID }
-        : null
-    persist()
+    apiModels.push(
+      ...providers
+        .filter((provider) => FREE_PROVIDER_IDS.has(provider.id))
+        .flatMap((provider) =>
+          Object.values(provider.models ?? {}).map((model) => ({
+            providerID: provider.id,
+            providerName: provider.name,
+            modelID: model.id,
+            modelName: model.name,
+            contextLimit: model.limit?.context ?? 128000,
+            outputLimit: model.limit?.output ?? 4096,
+          })),
+        ),
+    )
   } catch {
-    options.value = []
+    // ponytail: network errors are handled gracefully below.
   }
+
+  // ponytail: Merge opencode.json config to supplement or override limits/names.
+  if (config) {
+    Object.entries(config.provider).forEach(([providerID, provider]) => {
+      Object.entries(provider.models).forEach(([modelID, model]) => {
+        const existing = apiModels.find(
+          (o) => o.providerID === providerID && o.modelID === modelID,
+        )
+        if (existing) {
+          if (model.name) existing.modelName = model.name
+          if (model.limit) {
+            existing.contextLimit = model.limit.context
+            existing.outputLimit = model.limit.output
+          }
+        } else {
+          apiModels.push({
+            providerID,
+            providerName: provider.name,
+            modelID,
+            modelName: model.name,
+            contextLimit: model.limit?.context ?? 128000,
+            outputLimit: model.limit?.output ?? 4096,
+          })
+        }
+      })
+    })
+  }
+
+  options.value = apiModels
+  
+  const stored = readStored()
+  const matches = stored
+    ? apiModels.some(
+        (o) => o.providerID === stored.providerID && o.modelID === stored.modelID,
+      )
+    : false
+  // ponytail: default to the first model so a fresh UI never falls
+  // back to a broken console default (e.g. a local ollama that 500s when the
+  // daemon is down). The stored selection wins when it still exists.
+  const fallback = apiModels[0]
+  selected.value = matches
+    ? stored
+    : fallback
+      ? { providerID: fallback.providerID, modelID: fallback.modelID }
+      : null
+  persist()
 }
 
 function select(index: number | null): void {
@@ -134,5 +215,6 @@ export function useModel() {
     select,
     getSelectedModelLimit,
     findLargerContextModels,
+    __resetModelConfig,
   }
 }

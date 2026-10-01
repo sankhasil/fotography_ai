@@ -42,10 +42,10 @@ describe('useTokenUsage', () => {
       tokens: { input: 200, output: 100, reasoning: 50, cache: { read: 20, write: 10 } },
     }
 
-    accumulateTokens('session-1', message1)
-    accumulateTokens('session-1', message2)
+    accumulateTokens('session-1', message1 as any)
+    accumulateTokens('session-1', message2 as any)
 
-    expect(totalTokensUsed.value).toBe(570) // 100+50+25+10+5 + 200+100+50+20+10
+    expect(totalTokensUsed.value).toBe(570)
   })
 
   it('ignores user messages', async () => {
@@ -61,7 +61,7 @@ describe('useTokenUsage', () => {
       time: { created: Date.now() },
     }
 
-    accumulateTokens('session-1', userMessage)
+    accumulateTokens('session-1', userMessage as any)
     expect(totalTokensUsed.value).toBe(0)
   })
 
@@ -80,7 +80,7 @@ describe('useTokenUsage', () => {
       tokens: { input: 300, output: 100, reasoning: 50, cache: { read: 0, write: 0 } },
     }
 
-    accumulateTokens('session-1', message)
+    accumulateTokens('session-1', message as any)
     expect(remainingTokens.value).toBe(550) // 1000 - 450
   })
 
@@ -100,15 +100,15 @@ describe('useTokenUsage', () => {
     })
 
     // 70% usage - normal
-    accumulateTokens('session-1', createMessage(700))
+    accumulateTokens('session-1', createMessage(700) as any)
     expect(warningLevel.value).toBe('normal')
 
     // 85% usage - warning
-    accumulateTokens('session-1', createMessage(150))
+    accumulateTokens('session-1', createMessage(150) as any)
     expect(warningLevel.value).toBe('warning')
 
     // 96% usage - critical
-    accumulateTokens('session-1', createMessage(110))
+    accumulateTokens('session-1', createMessage(110) as any)
     expect(warningLevel.value).toBe('critical')
   })
 
@@ -128,7 +128,7 @@ describe('useTokenUsage', () => {
       tokens: { input: 250_000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
     }
 
-    accumulateTokens('session-1', message)
+    accumulateTokens('session-1', message as any)
     expect(formattedUsed.value).toBe('250.0K')
     expect(formattedRemaining.value).toBe('1.3M')
   })
@@ -147,7 +147,7 @@ describe('useTokenUsage', () => {
       tokens: { input: 100, output: 50, reasoning: 0, cache: { read: 0, write: 0 } },
     }
 
-    accumulateTokens('session-1', message)
+    accumulateTokens('session-1', message as any)
     expect(totalTokensUsed.value).toBe(150)
 
     clearSession('session-1')

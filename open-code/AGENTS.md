@@ -498,6 +498,189 @@ Every `ponytail:` comment must explain:
 
 ---
 
+# Knowledge & Documentation (OKF)
+
+`docs/` is an OKF bundle (Open Knowledge Format — https://okf.md).
+
+This repo declares **two OKF bundles**:
+
+| Bundle | Path | Purpose |
+|---|---|---|
+| Project documentation | `docs/` | Concepts, howtos, ADRs, architecture, session journal. For humans and agents. |
+| Agent operational knowledge | `docs/agents/` | How agents should work in this repo — topics, notes, sessions. The agent's external memory, not for human deliverables. |
+
+Every markdown file in either bundle MUST:
+
+- start with YAML frontmatter declaring `type:` (`concept` | `howto` | `reference` | `decision` | `metric`)
+- declare `title:` in frontmatter
+- be listed in its bundle's `index.md`
+
+Bundle entry points:
+
+- `docs/index.md` — frontmatter carries `title:` and `version:` (semver), body lists every entry.
+- `docs/agents/index.md` — frontmatter carries `title:`, body lists every entry.
+
+## Architecture Decision Records (ADR)
+
+ADRs are OKF docs with `type: decision`. One file per decision under `docs/adr/NNNN-kebab-title.md` (zero-padded, monotonically increasing).
+
+Required frontmatter: `type: decision`, `title:`, `status:` (`proposed` | `accepted` | `deprecated` | `superseded`), `date:` (`YYYY-MM-DD`).
+
+Body sections (Nygard format): Context → Decision → Consequences → Alternatives considered.
+
+Create an ADR for any decision that is hard to reverse or that future maintainers will ask "why?" about.
+
+## Architecture Documentation (arc42)
+
+When created, `docs/architecture.md` follows the arc42 template (https://arc42.org): Introduction and Goals, Architecture Constraints, Context and Scope, Solution Strategy, Building Block View, Runtime View, Deployment View, Cross-cutting Concepts, Architecture Decisions, Quality Requirements, Risks and Technical Debt, Glossary. Frontmatter: `type: concept`.
+
+## Architecture Diagrams (Structurizr)
+
+Diagrams are code (https://structurizr.com). C4 model only.
+
+- `.dsl` files live under `docs/diagrams/`
+- one workspace per file, multiple views per workspace
+- reference diagrams from docs by relative path: `![alt](diagrams/foo.png)`
+- DSL is the source of truth; render via Structurizr CLI or Playground
+- embed DSL snippets inline in docs only for explanation, never as the source
+
+---
+
+# ADHD Journal & Operator Profile
+
+External memory for an operator with ADHD. Session journals beat working memory.
+
+## Files
+
+| File | Purpose |
+|---|---|
+| `docs/journal/operator-profile.md` | Who the operator is, how they work, what tools they use. Read once per session. |
+| `docs/journal/YYYY-MM-DD.md` | One per session. What was tried, what worked, what's pending. |
+| `docs/journal/decisions.md` | Append-only. One line per entry: `YYYY-MM-DD: decided X because Y`. |
+
+## Operator Profile
+
+The profile lives at `docs/journal/operator-profile.md`. It captures:
+
+- **User info** — name, role, ADHD flag
+- **Communication preferences** — short answers, bullets, ask-before-acting
+- **Work style** — energy patterns, interruption tolerance, session length
+- **Tool preferences** — shell, editor, build tools, MCP servers
+- **Git preferences** — commit style, branching, rebase vs merge
+- **Approval gates** — what requires confirmation before acting
+- **Current focus areas** — active work items (edit as work evolves)
+
+Update the profile when preferences change. It's not a daily file — it's a stable reference.
+
+## Template: Daily Entry
+
+```markdown
+---
+type: reference
+title: "YYYY-MM-DD Session"
+---
+
+# YYYY-MM-DD
+
+## Session context
+- **Focus**: (what you're working on today)
+- **Repos touched**: (which repositories)
+- **Tickets**: (JIRA ticket keys, if any)
+- **Branch**: (current branch name)
+- **Blockers**: (anything blocking progress)
+
+## What was done
+-
+
+## What's pending
+-
+
+## Decisions
+- See decisions.md
+```
+
+## Rules
+
+- The journal is for the operator. Not for code review. Not for deliverables.
+- Keep it short. One idea per bullet.
+- Never delete entries — append only.
+- Promote non-trivial decisions to full ADRs when they affect architecture.
+- Read the operator profile at session start. Respect its preferences.
+
+---
+
+# Developer Onboarding
+
+`docs/dev-profile.md` (OKF `type: howto`) is the single entry point for a new developer to set up their environment.
+
+It lists:
+
+- required tools (with versions)
+- env vars (names only — values live in `.env` or vault, never in the doc)
+- run commands (build, test, run locally)
+- IDE plugins worth installing
+- links to `docs/architecture.md` and the ADR folder
+
+Keep it current. If a setup step is wrong, fix the doc, not just your machine.
+
+---
+
+# Agent Initialization
+
+On the first read of this AGENTS.md in a working folder, before acting on any
+user request, ensure the OKF bundles below exist. Idempotent — strict skip any
+file that already exists. Never overwrite.
+
+## Create (only if missing)
+
+### Project documentation bundle
+- `docs/index.md`           — type: concept,   title: Project Documentation, version: 0.1.0
+- `docs/adr/index.md`       — type: reference, title: Architecture Decision Records
+- `docs/journal/index.md`   — type: reference, title: Session Journal
+- `docs/diagrams/index.md`  — type: reference, title: Architecture Diagrams
+
+### Agent operational bundle
+- `docs/agents/index.md`            — type: concept,  title: Agent Knowledge Bundle
+- `docs/agents/topics/index.md`     — type: reference, title: Agent Topics
+- `docs/agents/notes/index.md`     — type: reference, title: Agent Notes
+- `docs/agents/sessions/index.md`   — type: reference, title: Agent Sessions
+
+### Journal seed files
+- `docs/journal/operator-profile.md`  — type: howto,    title: Operator Profile
+  (use the template from "ADHD Journal & Operator Profile")
+- `docs/journal/decisions.md`          — type: decision, title: Decisions Log
+  (frontmatter only, empty body for append-only entries)
+
+## Rules
+- `mkdir -p` parent directories as needed.
+- Do NOT create `docs/journal/YYYY-MM-DD.md` — created at session start.
+- Do NOT create `docs/architecture.md`, `docs/dev-profile.md`, `docs/adr/NNNN-*.md`,
+  `docs/agents/log.md` — created on demand.
+- If every required file already exists, do nothing.
+
+---
+
+# Session Start Protocol
+
+Mandatory at the start of every working session in a folder with this AGENTS.md.
+Skippable on explicit user request ("skip journal", "just do X").
+
+1. Run Agent Initialization if `docs/journal/operator-profile.md` is missing.
+2. Read `docs/journal/operator-profile.md`. Adapt tone, pace, and approval gates
+   to the profile.
+3. Check `docs/journal/YYYY-MM-DD.md` (today):
+   - If exists: read it, surface "What's pending" and "Session context",
+     ask "pick up where you left off?"
+   - If missing: create it using the daily entry template from
+     "ADHD Journal & Operator Profile". Populate Session context from current
+     git state (branch, recent commits) and any active JIRA tickets.
+4. Read last 5 lines of `docs/journal/decisions.md` for recent context.
+5. After completing a significant task: append a bullet to today's "What was done".
+6. After making a decision: append `YYYY-MM-DD: decided X because Y` to `decisions.md`.
+7. At session end: update "What's pending" and "Session context".
+
+---
+
 # Output Expectations for AI Agents
 
 When generating code:
