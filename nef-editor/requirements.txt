@@ -1,0 +1,5 @@
+# NEF editor runtime dependencies.
+#
+# Deliberately tiny. See ADR-0004: EXIF metadata is read by a pure-Python TIFF parser,
+# so there is no exiftool and no rawpy. Verified unusable on HE*-compressed files anyway.
+piexif==1.1.3

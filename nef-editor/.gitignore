@@ -1,0 +1,7 @@
+# Own virtualenv. Recreate with:
+#   python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+.venv/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/

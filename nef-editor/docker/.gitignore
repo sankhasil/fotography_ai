@@ -1,0 +1,5 @@
+# Local paths for the renderer service. Copied from .env.example.
+.env
+
+# Host-side Adobe DNG Converter intermediates and exported jpegs.
+out/

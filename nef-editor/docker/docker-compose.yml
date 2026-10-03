@@ -1,0 +1,22 @@
+# Renderer service for the NEF editor.
+#
+# darktable-cli runs here in Docker; the Adobe DNG Converter step runs on the host
+# (it is a macOS/Windows binary and needs Wine under Linux). The two stages exchange
+# files through ./out.
+#
+# Usage:
+#   PHOTOS_DIR="/path/to/folder" docker compose run --rm renderer <darktable-cli args>
+#
+# ponytail: source folder is mounted read-only. The renderer has no reason to write to
+# the originals, and read-only makes that structurally impossible rather than a promise.
+
+services:
+  renderer:
+    build:
+      context: .
+    image: nef-editor-darktable:1
+    volumes:
+      - "${PHOTOS_DIR:?set PHOTOS_DIR to your .nef folder}:/photos:ro"
+      - "${DNG_DIR:-./out}:/in:ro"
+      - "${EXPORT_DIR:-./out}:/out"
+    working_dir: /app
