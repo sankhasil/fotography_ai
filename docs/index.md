@@ -11,13 +11,17 @@ OKF bundle for the fotography_ai project. Concepts, howtos, ADRs, architecture, 
 ## Entries
 
 ### Architecture
-- _none yet_ — see `adr/` for decisions and `architecture.md` (created on demand)
+- [Architecture](./architecture/index.md) — implementation plans, one folder per feature
 
 ### Howtos
 - _none yet_
 
 ### Concepts
-- _none yet_
+- [NEF Photo Editor CLI — Implementation Plan](./architecture/nef-editor-cli/plan.md) — revision 3, revised after verification
+- [NEF Photo Editor CLI — Verification Findings](./architecture/nef-editor-cli/verification.md) — measured evidence; the plan's foundation
+- [Nikon HE\* Decoder — Landscape and Findings](./architecture/nef-editor-cli/he-decoder-research.md) — every route tried, and why macOS ImageIO won
+- [NEF Photo Editor CLI — Preset Matrix](./architecture/nef-editor-cli/presets.md) — the 16 corrections as `--core` parameter sets
+- [NEF Photo Editor CLI — Database Schema](./architecture/nef-editor-cli/database.md) — one table, idempotency, failure recording
 
 ### Reference
 - [Session Journal](./journal/index.md)
@@ -25,4 +29,12 @@ OKF bundle for the fotography_ai project. Concepts, howtos, ADRs, architecture, 
 - [Architecture Diagrams](./diagrams/index.md)
 
 ### Decisions
-- _none yet_ — see `journal/decisions.md` for the append-only log
+- [0001 — darktable-cli is the render engine](./adr/0001-darktable-cli-as-render-engine.md) — **superseded**
+- [0002 — The NEF editor CLI gets its own venv](./adr/0002-nef-editor-cli-gets-its-own-venv.md) — accepted 2026-10-02
+- [0003 — Presets are `--core` parameter sets](./adr/0003-presets-are-core-parameter-sets-not-darktable-styles.md) — accepted 2026-10-02
+- [0004 — Read EXIF in pure Python](./adr/0004-read-exif-in-pure-python.md) — accepted 2026-10-02
+- [0005 — HE\* needs a host-side converter](./adr/0005-he-requires-a-host-side-converter.md) — **superseded**
+- [0006 — macOS ImageIO decodes HE\*](./adr/0006-macos-imageio-decodes-he-star.md) — accepted 2026-10-02
+
+### Research records (superseded, kept for provenance)
+- [NEF Photo Editor CLI — Draft Plan](./nef-editor-cli-plan.md) — superseded by the implementation plan; retained as the research record

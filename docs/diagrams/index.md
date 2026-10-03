@@ -14,4 +14,6 @@ Diagrams are code (https://structurizr.com). C4 model only.
 
 ## Diagrams
 
-_None yet._
+| File | Model | Purpose |
+|---|---|---|
+| [`nef-editor-cli.dsl`](./nef-editor-cli.dsl) | C4 | The NEF editor CLI, its external engines (darktable, exiftool, LibRaw), and the external-binary boundary |
