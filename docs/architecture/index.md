@@ -25,13 +25,18 @@ Structurizr DSL under [`../diagrams/`](../diagrams/index.md).
 | File | Type | Purpose |
 |---|---|---|
 | [Implementation Plan](./nef-editor-cli/plan.md) | concept | Goals, pipeline, components, acceptance criteria, constitutional gates |
+| [Roadmap (Phases 1-3)](./nef-editor-cli/roadmap.md) | concept | Phase ordering and gates for the remaining work |
+| [Phase 1 Cleanup Plan](./nef-editor-cli/phase-1-cleanup.md) | concept | Close open gaps in Phase 1: probe wiring, long-lived container, integration tests, Makefile, README |
+| [Phase 2 Preset Tuning Plan](./nef-editor-cli/phase-2-preset-tuning.md) | concept | `compare` subcommand, fixture corpus, tuning runbook, ISO-driven night NR |
+| [Phase 3 Preview Classifier Plan](./nef-editor-cli/phase-3-preview-classifier.md) | concept | 384×256 preview → portrait/landscape classifier behind `--category auto` |
 | [Verification Findings](./nef-editor-cli/verification.md) | reference | Measured evidence: what was tested, what passed, what failed |
 | [HE\* Decoder Landscape](./nef-editor-cli/he-decoder-research.md) | reference | Every route to decoding HE\*, and why macOS ImageIO won |
 | [Preset Matrix](./nef-editor-cli/presets.md) | reference | The 16 corrections, their composition, and the authoring boundary |
 | [Database Schema](./nef-editor-cli/database.md) | reference | The one table, the idempotency key, and failure recording |
 
-Revision 3. Status: revised after verification. The HE\* decode stage is solved — macOS ImageIO,
-verified at full resolution.
+Revision 3 (plan), revision 1 (roadmap and phase plans). Status: Phase 1 built and verified; the
+roadmap orders Phase 1 cleanup → Phase 2 preset tuning → Phase 3 preview classifier. The HE\*
+decode stage is solved — macOS ImageIO, verified at full resolution.
 
 Read [`verification.md`](./nef-editor-cli/verification.md) first — it is the evidence base, and where
 it disagrees with the plan, it wins.

@@ -29,72 +29,88 @@ def build_parser() -> argparse.ArgumentParser:
     parser = _Parser(
         prog="nef-editor",
         description=(
-            "Classify Nikon .nef photographs and export corrected JPEGs into a "
-            "separate folder grouped by category. Originals are never modified."
+            "Classify Nikon .nef photographs and write XMP sidecars next to them "
+            "so darktable's GUI loads the matching preset. Originals are never modified."
         ),
         epilog=(
             "Only 'night' is detected automatically (ISO >= 3200). Assign any "
             "other category with --category.\n"
             f"categories: {_choices('category', ASSIGNABLE_CATEGORIES)}\n"
-            f"sub-styles: {_choices('sub-style', SUB_STYLES)}"
+            f"sub-styles: {_choices('sub-style', SUB_STYLES)}\n"
+            "\nSubcommands:\n"
+            "  convert-nksc <folder>  Convert darktable .xmp sidecars to NX Studio .nksc files\n"
+            "  organize <folder>      Move NEFs+XMPs into category subfolders using the DB"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("folder", help="folder containing .nef files")
-    parser.add_argument("--out", help="export root. default: <folder>_exported")
-    parser.add_argument(
-        "--category", choices=ASSIGNABLE_CATEGORIES,
-        help="assign a category instead of detecting one",
-    )
-    parser.add_argument(
-        "--sub-style", choices=SUB_STYLES, default=SubStyle.NEUTRAL.value,
-        help="aesthetic intent. never detected. default: neutral",
-    )
-    parser.add_argument("--recursive", action="store_true", help="descend into subfolders")
-    parser.add_argument(
-        "--dry-run", action="store_true",
-        help="classify and report only; convert nothing and write no database rows",
-    )
-    parser.add_argument(
-        "--force", action="store_true",
-        help="reprocess even when the idempotency key is unchanged",
-    )
-    parser.add_argument("--db", help="database location. default: <out>/.nef-editor/state.db")
-    parser.add_argument(
-        "--keep-intermediates", action="store_true",
-        help="keep the stage-one decodes instead of deleting them",
-    )
-    parser.add_argument("--work", help="intermediate directory. default: a temporary one")
+    sub = parser.add_subparsers(dest="command")
+
+    # Default subcommand: classify (no name — invoked when no subcommand given)
+    classify = sub.add_parser("classify", help="classify and write XMP sidecars (default)")
+    classify.add_argument("folder", help="folder containing .nef files")
+    classify.add_argument("--category", choices=ASSIGNABLE_CATEGORIES)
+    classify.add_argument("--only-unclassified", action="store_true")
+    classify.add_argument("--sub-style", choices=SUB_STYLES, default=SubStyle.NEUTRAL.value)
+    classify.add_argument("--recursive", action="store_true")
+    classify.add_argument("--dry-run", action="store_true")
+    classify.add_argument("--force", action="store_true")
+    classify.add_argument("--db")
+
+    # Subcommand: convert-nksc
+    nksc_parser = sub.add_parser("convert-nksc", help="Convert darktable XMP sidecars to NX Studio .nksc files")
+    nksc_parser.add_argument("folder", help="folder containing .nef + .xmp files")
+    nksc_parser.add_argument("--recursive", action="store_true", help="descend into subfolders")
+    nksc_parser.add_argument("--dry-run", action="store_true", help="show what would be converted, write nothing")
+
+    # Subcommand: organize
+    org_parser = sub.add_parser("organize", help="Move NEFs+XMPs into category subfolders using the DB")
+    org_parser.add_argument("folder", help="folder with .nef-editor/state.db")
+    org_parser.add_argument("--dry-run", action="store_true", help="show what would move, move nothing")
+
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
+    # If no subcommand given, insert "classify" as default
+    if argv is None:
+        argv = list(sys.argv[1:])
+    if argv and argv[0] not in ("convert-nksc", "organize", "-h", "--help"):
+        argv = ["classify"] + argv
+    elif not argv:
+        argv = ["classify"]
+
     parser = build_parser()
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
-        # argparse handles --help and flag errors itself. Convert to a return
-        # value so main() is testable and never unwinds the caller.
         return int(exc.code or 0)
 
+    if args.command == "convert-nksc":
+        return _cmd_convert_nksc(args)
+    elif args.command == "organize":
+        return _cmd_organize(args)
+    elif args.command == "classify":
+        return _cmd_classify(args)
+
+    parser.print_help()
+    return 2
+
+
+def _cmd_classify(args: argparse.Namespace) -> int:
     source = Path(args.folder).expanduser()
     if not source.is_dir():
         print(f"error: not a folder: {source}", file=sys.stderr)
         return 2
 
-    out = Path(args.out).expanduser() if args.out else source.parent / f"{source.name}_exported"
-
     opts = Options(
         source=source,
-        out=out,
         category=Category(args.category) if args.category else None,
         sub_style=SubStyle(args.sub_style),
         recursive=args.recursive,
         dry_run=args.dry_run,
         force=args.force,
         db=Path(args.db).expanduser() if args.db else None,
-        keep_intermediates=args.keep_intermediates,
-        work=Path(args.work).expanduser() if args.work else None,
+        only_unclassified=args.only_unclassified,
     )
 
     try:
@@ -110,6 +126,81 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  ... and {len(result.errors) - 10} more", file=sys.stderr)
 
     return 1 if result.failed else 0
+
+
+def _cmd_convert_nksc(args: argparse.Namespace) -> int:
+    from nef_editor.nksc import convert_folder
+
+    source = Path(args.folder).expanduser()
+    if not source.is_dir():
+        print(f"error: not a folder: {source}", file=sys.stderr)
+        return 2
+
+    if args.recursive:
+        all_dirs = [d for d in source.rglob("*") if d.is_dir()]
+        all_dirs.append(source)
+    else:
+        all_dirs = [source]
+
+    total = {"converted": 0, "skipped": 0, "errors": 0}
+    for d in all_dirs:
+        counts = convert_folder(d, dry_run=args.dry_run)
+        for k in total:
+            total[k] += counts[k]
+
+    action = "would convert" if args.dry_run else "converted"
+    print(f"{action} {total['converted']}, skipped {total['skipped']}, errors {total['errors']}")
+    return 1 if total["errors"] else 0
+
+
+def _cmd_organize(args: argparse.Namespace) -> int:
+    import shutil
+    from collections import Counter
+    from nef_editor.store import Store
+
+    source = Path(args.folder).expanduser()
+    if not source.is_dir():
+        print(f"error: not a folder: {source}", file=sys.stderr)
+        return 2
+
+    db = source / ".nef-editor" / "state.db"
+    if not db.exists():
+        print(f"error: no database at {db}", file=sys.stderr)
+        return 2
+
+    with Store(db) as s:
+        records = s.all_records()
+
+    if args.dry_run:
+        cats = Counter(r.category.value for r in records)
+        print(f"would move {len(records)} files into:")
+        for cat, count in cats.most_common():
+            if cat != "unclassified":
+                print(f"  {cat}/: {count}")
+        return 0
+
+    moved = Counter()
+    for r in records:
+        cat = r.category.value
+        if cat == "unclassified":
+            continue
+        dest_dir = source / cat
+        dest_dir.mkdir(exist_ok=True)
+        nef = source / r.source_path
+        if nef.exists():
+            shutil.move(str(nef), str(dest_dir / r.source_path))
+            moved[f"{cat}/nef"] += 1
+        if r.output_path:
+            xmp = source / r.output_path
+            if xmp.exists():
+                shutil.move(str(xmp), str(dest_dir / r.output_path))
+                moved[f"{cat}/xmp"] += 1
+
+    shutil.rmtree(source / ".nef-editor", ignore_errors=True)
+    print(f"moved {sum(moved.values())} files")
+    for key, count in sorted(moved.items()):
+        print(f"  {key}: {count}")
+    return 0
 
 
 if __name__ == "__main__":  # pragma: no cover

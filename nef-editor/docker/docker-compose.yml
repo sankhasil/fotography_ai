@@ -1,8 +1,8 @@
 # Renderer service for the NEF editor.
 #
-# darktable-cli runs here in Docker; the Adobe DNG Converter step runs on the host
-# (it is a macOS/Windows binary and needs Wine under Linux). The two stages exchange
-# files through ./out.
+# darktable-cli runs here in Docker for the rendering stage.
+# The decode stage (CIRAWFilter / sips) runs on the macOS host — see ADR-0006.
+# The two stages exchange files through ./out.
 #
 # Usage:
 #   PHOTOS_DIR="/path/to/folder" docker compose run --rm renderer <darktable-cli args>

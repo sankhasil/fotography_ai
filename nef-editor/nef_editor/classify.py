@@ -28,6 +28,7 @@ def classify(
     *,
     category: Category | None = None,
     sub_style: SubStyle = SubStyle.NEUTRAL,
+    only_unclassified: bool = False,
 ) -> Classification:
     """Classify one photograph.
 
@@ -35,24 +36,24 @@ def classify(
     Otherwise `night` is detected from ISO, and anything else is UNCLASSIFIED
     rather than guessed at.
 
+    When `only_unclassified` is True, the explicit `category` is used only
+    as a fallback for photos that auto-detection left UNCLASSIFIED. This lets
+    the operator say "assign landscape to whatever night detection missed"
+    without overriding the night photos.
+
     Never raises: an unreadable photograph is UNCLASSIFIED with a reason, and
     the batch continues.
     """
-    if category is not None:
+    # When only_unclassified is False, explicit category always wins (old behaviour).
+    if category is not None and not only_unclassified:
         return Classification(
             category=category,
             sub_style=sub_style,
             reasons=(f"category assigned by operator: {category.value}",),
         )
 
-    if metadata.iso is None:
-        return Classification(
-            category=Category.UNCLASSIFIED,
-            sub_style=sub_style,
-            reasons=("no ISO in EXIF; cannot detect night",),
-        )
-
-    if metadata.iso >= NIGHT_ISO_THRESHOLD:
+    # Auto-detect night
+    if metadata.iso is not None and metadata.iso >= NIGHT_ISO_THRESHOLD:
         return Classification(
             category=Category.NIGHT,
             sub_style=sub_style,
@@ -60,6 +61,22 @@ def classify(
                 f"night: ISO {metadata.iso} >= {NIGHT_ISO_THRESHOLD}",
                 f"lens: {_describe(metadata)}",
             ),
+        )
+
+    # Not night. Apply operator assignment if given.
+    if category is not None:
+        reason = f"category assigned by operator (fallback): {category.value}"
+        return Classification(
+            category=category,
+            sub_style=sub_style,
+            reasons=(reason,),
+        )
+
+    if metadata.iso is None:
+        return Classification(
+            category=Category.UNCLASSIFIED,
+            sub_style=sub_style,
+            reasons=("no ISO in EXIF; cannot detect night",),
         )
 
     return Classification(

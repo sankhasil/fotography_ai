@@ -28,6 +28,8 @@ class Category(StrEnum):
     LANDSCAPE = "landscape"
     MACRO = "macro"
     NIGHT = "night"
+    ARCHITECTURE = "architecture"
+    PRODUCT = "product"
     UNCLASSIFIED = "unclassified"
 
 

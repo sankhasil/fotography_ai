@@ -71,7 +71,7 @@ def test_reading_never_raises(tmp_path: Path) -> None:
 
 @pytest.mark.skipif(not CORPUS.is_dir(), reason="operator photo corpus not present")
 def test_reads_a_real_z9_he_star_file() -> None:
-    sample = sorted(CORPUS.glob("*.NEF"))[0]
+    sample = sorted(CORPUS.rglob("*.NEF"))[0]
     meta = read_metadata(sample)
 
     assert meta.model == "NIKON Z 9"

@@ -21,7 +21,7 @@ def _nef(path: Path) -> Path:
 
 def test_dry_run_succeeds(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _nef(tmp_path / "src" / "a.NEF")
-    code = main([str(tmp_path / "src"), "--out", str(tmp_path / "out"), "--dry-run"])
+    code = main([str(tmp_path / "src"), "--dry-run"])
     assert code == 0
     assert "would process" in capsys.readouterr().out
 
@@ -30,7 +30,7 @@ def test_invalid_category_names_the_accepted_values(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _nef(tmp_path / "src" / "a.NEF")
-    code = main([str(tmp_path / "src"), "--out", str(tmp_path / "out"),
+    code = main([str(tmp_path / "src"),
                  "--category", "sunset", "--dry-run"])
     assert code != 0
     err = capsys.readouterr().err
@@ -42,7 +42,7 @@ def test_invalid_substyle_names_the_accepted_values(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _nef(tmp_path / "src" / "a.NEF")
-    code = main([str(tmp_path / "src"), "--out", str(tmp_path / "out"),
+    code = main([str(tmp_path / "src"),
                  "--sub-style", "sepia", "--dry-run"])
     assert code != 0
     err = capsys.readouterr().err
@@ -75,18 +75,18 @@ def test_nonexistent_folder_is_rejected(
 def test_valid_values_are_accepted(tmp_path: Path) -> None:
     _nef(tmp_path / "src" / "a.NEF")
     for category in ("portrait", "landscape", "macro", "night"):
-        code = main([str(tmp_path / "src"), "--out", str(tmp_path / "out"),
+        code = main([str(tmp_path / "src"),
                      "--category", category, "--dry-run"])
         assert code == 0, category
     for style in ("vivid", "neutral", "grey", "monochrome"):
-        code = main([str(tmp_path / "src"), "--out", str(tmp_path / "out"),
+        code = main([str(tmp_path / "src"),
                      "--sub-style", style, "--dry-run"])
         assert code == 0, style
 
 
 def test_defaults_to_neutral_substyle(tmp_path: Path) -> None:
     _nef(tmp_path / "src" / "a.NEF")
-    assert main([str(tmp_path / "src"), "--out", str(tmp_path / "out"), "--dry-run"]) == 0
+    assert main([str(tmp_path / "src"), "--dry-run"]) == 0
 
 
 def test_help_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:

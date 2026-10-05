@@ -1,66 +1,35 @@
-"""The sixteen corrections, as darktable-cli `--core` parameter sets.
+"""Preset sidecar selection.
 
-A preset is composed into ONE string. darktable-cli rejects repeated `--core`
-flags; multiple modules must be semicolon-separated inside a single argument.
-Verified in the Phase 1 spike and recorded in ADR-0003.
+Presets are XMP sidecar files authored in darktable's GUI and shipped as
+data files under presets/. The CLI selects one by category + sub-style
+and passes it to darktable-cli as the second positional argument.
 
-NOTE ON MAGNITUDES: presets.md fixes the *names*, the base-plus-delta structure
-and the ordering, but deliberately leaves parameter values to visual iteration
-against real photographs. The numbers below are a defensible starting point, not
-a tuned result. Treat them as provisional and revise by comparing renders.
+This replaces the --core string approach, which was silently ignored
+by darktable-cli 5.6.1 (falsified 2026-10-04; ADR-0003 superseded).
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from nef_editor.model import Category, SubStyle
 
-# Categories that have presets. UNCLASSIFIED deliberately has none.
-PRESET_CATEGORIES: tuple[Category, ...] = (
-    Category.PORTRAIT,
-    Category.LANDSCAPE,
-    Category.MACRO,
-    Category.NIGHT,
-)
-
-# Sub-style deltas, applied on top of the category delta.
-# Keyed by sub-style because `neutral` contributes nothing.
-_SUB_STYLE_DELTA: dict[SubStyle, str] = {
-    SubStyle.NEUTRAL: "",
-    SubStyle.VIVID: "darktable.saturation:saturation=1.250",
-    SubStyle.GREY: "darktable.saturation:saturation=0.600",
-    SubStyle.MONOCHROME: "darktable.mono:mix=1.000",
-}
-
-# Per-category deltas: subject-appropriate sharpening, noise handling, contrast.
-_CATEGORY_DELTA: dict[Category, str] = {
-    # Softer global contrast; sharpening kept modest to avoid haloes on skin.
-    Category.PORTRAIT: "darktable.exposure:exposure=0.000;darktable.contrast:contrast=1.020",
-    # Local contrast to separate foreground from sky; gentle highlight recovery.
-    Category.LANDSCAPE: "darktable.contrast:contrast=1.150;darktable.tone:saturation=1.050",
-    # Micro-contrast at high effective magnification; conservative NR.
-    Category.MACRO: "darktable.sharpening:sharpen=0.200;darktable.contrast:contrast=1.080",
-    # Shadow recovery plus restrained highlight handling around point sources.
-    Category.NIGHT: "darktable.shadows:shadows=0.400;darktable.contrast:contrast=1.100",
-}
-
-# Composition: base, then category, then sub-style. Monochrome must come last so
-# it wins over any sub-style saturation delta.
-_BASE = "darktable.exposure:exposure=0.000"
+PRESETS_DIR = Path(__file__).resolve().parent.parent / "presets"
 
 
-def build_correction(category: Category, sub_style: SubStyle) -> str:
-    """Compose one `--core` string for a category and sub-style.
+def select_sidecar(category: Category, sub_style: SubStyle) -> Path | None:
+    """Return the XMP sidecar path for a category + sub-style, or None.
 
-    Raises KeyError for UNCLASSIFIED, which has no preset. The caller must not
-    substitute a default: a silent fallback would hide a miscategorisation.
+    Returns None when the sidecar does not exist yet. The caller renders
+    without correction in that case -- same as the old --core path, which
+    was silently ignored anyway. A None return is not an error.
+
+    UNCLASSIFIED has no preset and always returns None.
     """
-    parts = [_BASE, _CATEGORY_DELTA[category], _SUB_STYLE_DELTA[sub_style]]
-    ordered = [p for p in parts if p]
-    if sub_style is SubStyle.MONOCHROME:
-        # Move the mono conversion to the end, past any saturation delta.
-        ordered = [p for p in ordered if "darktable.mono" not in p]
-        ordered.append("darktable.mono:mix=1.000")
-    return ";".join(ordered)
+    if category is Category.UNCLASSIFIED:
+        return None
+    xmp = PRESETS_DIR / f"nef-{category.value}-{sub_style.value}.xmp"
+    return xmp if xmp.exists() else None
 
 
 def preset_name(category: Category, sub_style: SubStyle) -> str:
@@ -69,6 +38,17 @@ def preset_name(category: Category, sub_style: SubStyle) -> str:
 
 
 def all_preset_names() -> tuple[str, ...]:
+    """All 16 preset names (4 categories x 4 sub-styles)."""
+    categories = tuple(c for c in Category if c is not Category.UNCLASSIFIED)
     return tuple(
-        preset_name(c, s) for c in PRESET_CATEGORIES for s in SubStyle
+        preset_name(c, s) for c in categories for s in SubStyle
+    )
+
+
+def existing_presets() -> tuple[str, ...]:
+    """Names of XMP sidecars actually present in presets/."""
+    if not PRESETS_DIR.exists():
+        return ()
+    return tuple(
+        f.stem for f in sorted(PRESETS_DIR.glob("nef-*.xmp"))
     )

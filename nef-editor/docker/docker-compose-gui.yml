@@ -1,0 +1,29 @@
+# darktable GUI via VNC for preset sidecar authoring.
+#
+# darktable cannot read HE* NEFs, so we author presets against 16-bit TIFFs
+# converted from NEFs via CIRAWFilter. See research-synthesis.md.
+#
+# Usage:
+#   PHOTOS_DIR="/tmp/nef-tiffs" docker compose -f docker-compose-gui.yml up
+#
+# Then connect via Screen Sharing (Cmd+Space, "Screen Sharing", vnc://localhost:5901)
+# Password: nef123
+#
+# ponytail: /photos is mounted rw so darktable can write sidecars next to TIFFs.
+# Sidecars are .xmp files that darktable writes and reads. The CLI copies them
+# to nef-editor/presets/ with the right name.
+
+services:
+  darktable-gui:
+    build:
+      context: .
+      dockerfile: Dockerfile.gui
+    image: nef-editor-darktable-gui:1
+    ports:
+      - "5901:5901"
+    volumes:
+      - "${PHOTOS_DIR:?set PHOTOS_DIR to your TIFF folder}:/photos:rw"
+      - "${PRESETS_DIR:-../presets}:/presets:rw"
+    environment:
+      - DISPLAY=:1
+      - RESOLUTION=1920x1080

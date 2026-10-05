@@ -1,12 +1,12 @@
-"""Orchestration: discover -> decode -> render -> stamp -> record.
+"""Orchestration: discover -> classify -> copy sidecar -> record.
 
-Two subprocess stages and the bookkeeping around them. No engine abstraction:
-`sips` and `darktable-cli` are called directly, and each is a plain function so
-tests can substitute it with monkeypatch.
+The main path writes XMP sidecar files next to each NEF so darktable's GUI
+loads the preset automatically when the operator opens the NEF. Originals are
+never modified. No Docker, no decode, no render in the main path -- the NEF
+stays as the master with full raw latitude.
 
-Stage one runs on the host because macOS ImageIO decodes HE* natively and no
-open-source decoder exists. Stage two runs in Docker where darktable 5.6.1 is
-pinned. See ADR-0006 and ADR-0003.
+`decode()` and `render()` are retained for optional JPEG preview export but
+are not called by `process_one()`. See ADR-0008 (pending).
 """
 
 from __future__ import annotations
@@ -25,10 +25,10 @@ from pathlib import Path
 from nef_editor.classify import classify
 from nef_editor.exif import read_metadata, write_category
 from nef_editor.model import Category, PhotoRecord, SubStyle
-from nef_editor.presets import build_correction, preset_name
+from nef_editor.presets import preset_name, select_sidecar
 from nef_editor.store import Store
 
-PIPELINE = "imageio>darktable-5.6.1"
+PIPELINE = "sidecar-copy-v1"
 DARKTABLE_IMAGE = "nef-editor-darktable:1"
 SOURCE_SUFFIXES = {".nef"}
 
@@ -38,15 +38,13 @@ class Options:
     """Everything the CLI can set. Frozen so a run cannot mutate its own config."""
 
     source: Path
-    out: Path
     category: Category | None = None
     sub_style: SubStyle = SubStyle.NEUTRAL
     recursive: bool = False
     dry_run: bool = False
     force: bool = False
     db: Path | None = None
-    keep_intermediates: bool = False
-    work: Path | None = None
+    only_unclassified: bool = False
 
 
 @dataclass(slots=True)
@@ -84,53 +82,59 @@ def discover(source: Path, *, recursive: bool) -> list[Path]:
 
 
 def decode(src: Path, dest: Path) -> Path:
-    """Stage one: HE* NEF -> rendered JPEG, via macOS ImageIO.
+    """Stage one: HE* NEF -> 16-bit linear TIFF, via Core Image CIRAWFilter.
 
     The capability is undocumented by Apple, so callers should probe once with
     a single file before committing a batch. See ADR-0006.
     """
+    import Quartz
+    from Foundation import NSURL
+
     dest.parent.mkdir(parents=True, exist_ok=True)
-    result = subprocess.run(
-        ["sips", "-s", "format", "jpeg", str(src), "--out", str(dest)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0 or not dest.exists() or dest.stat().st_size == 0:
-        raise RuntimeError(
-            f"sips failed for {src.name} (exit {result.returncode}): "
-            f"{result.stderr.strip() or result.stdout.strip()}"
-        )
+    f = Quartz.CIRAWFilter.alloc().initWithImageURL_(NSURL.fileURLWithPath_(str(src)))
+    if f is None:
+        raise RuntimeError(f"CIRAWFilter cannot decode {src.name}")
+    f.setHighlightRecoveryEnabled_(True)
+    f.setBoostAmount_(0.0)  # defeat tone curve for linear output
+    img = f.outputImage()
+    ctx = Quartz.CIContext.context()
+    cs = Quartz.CGColorSpaceCreateWithName(Quartz.kCGColorSpaceLinearSRGB)
+    ok = ctx.writeTIFFRepresentationOfImage_toURL_format_colorSpace_options_error_(
+        img, NSURL.fileURLWithPath_(str(dest)),
+        Quartz.kCIFormatRGBAh, cs, None, None)
+    if not ok or not dest.exists() or dest.stat().st_size == 0:
+        raise RuntimeError(f"CIRAWFilter failed for {src.name}")
     return dest
 
 
-def render(decoded: Path, out_dir: Path, correction: str) -> Path:
-    """Stage two: decoded JPEG -> corrected JPEG, via darktable-cli in Docker.
+def render(decoded: Path, out_dir: Path, xmp: Path | None) -> Path:
+    """Stage two: decoded TIFF -> corrected JPEG, via darktable-cli in Docker.
 
-    `correction` is a single `--core` string. Multiple `--core` flags are
-    rejected by darktable-cli, so modules are semicolon-separated.
+    If xmp is None, renders without correction (darktable's default development).
+    If xmp is provided, it is mounted and passed as the 2nd positional arg.
 
     ponytail: darktable-cli 5.6.1 has no overwrite flag. Given an existing
     target it writes `name_01.jpg` and exits 0, so a stale file would survive
-    and we would hash the *previous* output — reporting a correction that never
-    happened. Removing the target first is the only way to get the name we
-    promised.
+    and we would hash the *previous* output -- reporting a correction that
+    never happened. Removing the target first is the only way to get the name
+    we promised.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     written = out_dir / f"{decoded.stem}.jpg"
     written.unlink(missing_ok=True)
-    result = subprocess.run(
-        [
-            "docker", "run", "--rm",
-            "-v", f"{decoded.parent}:/in:ro",
-            "-v", f"{out_dir}:/out",
-            "--entrypoint", "sh", DARKTABLE_IMAGE, "-c",
-            f'darktable-cli "/in/{decoded.name}" /out --core "{correction}"',
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+
+    cmd = ["docker", "run", "--rm",
+           "-v", f"{decoded.parent}:/in:ro",
+           "-v", f"{out_dir}:/out",
+           "--entrypoint", "darktable-cli", DARKTABLE_IMAGE]
+
+    if xmp is not None:
+        cmd.extend(["-v", f"{xmp}:/preset.xmp:ro"])
+        cmd.extend(["/in/" + decoded.name, "/preset.xmp", "/out", "--out-ext", "jpeg"])
+    else:
+        cmd.extend(["/in/" + decoded.name, "/out", "--out-ext", "jpeg"])
+
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0 or not written.exists():
         raise RuntimeError(
             f"darktable-cli failed for {decoded.name} (exit {result.returncode}): "
@@ -139,8 +143,12 @@ def render(decoded: Path, out_dir: Path, correction: str) -> Path:
     return written
 
 
-def process_one(path: Path, store: Store, opts: Options, work: Path) -> PhotoRecord | None:
-    """Process a single photograph. Returns the record, or None if skipped."""
+def process_one(path: Path, store: Store, opts: Options) -> PhotoRecord | None:
+    """Process a single photograph. Returns the record, or None if skipped.
+
+    Writes an XMP sidecar next to the NEF so darktable's GUI loads the preset
+    when the operator opens the NEF. The NEF itself is never modified.
+    """
     stat = path.stat()
     probe = PhotoRecord(
         source_path=path.name,
@@ -156,7 +164,8 @@ def process_one(path: Path, store: Store, opts: Options, work: Path) -> PhotoRec
         return None
 
     metadata = read_metadata(path)
-    result = classify(metadata, category=opts.category, sub_style=opts.sub_style)
+    result = classify(metadata, category=opts.category, sub_style=opts.sub_style,
+                      only_unclassified=opts.only_unclassified)
 
     if result.category is Category.UNCLASSIFIED:
         record = PhotoRecord(
@@ -173,20 +182,19 @@ def process_one(path: Path, store: Store, opts: Options, work: Path) -> PhotoRec
         store.save(record)
         return record
 
-    correction = build_correction(result.category, result.sub_style)
-    decoded = work / f"{path.stem}.jpg"
-    output: Path | None = None
-    output_hash: str | None = None
+    xmp = select_sidecar(result.category, result.sub_style)
+    sidecar_dest: Path | None = None
+    sidecar_hash: str | None = None
     reasons = result.reasons
 
-    try:
-        decode(path, decoded)
-        output = render(decoded, opts.out / result.category.value, correction)
-        write_category(output, result.category.value)
-        output_hash = _sha256(output)
-    except Exception as exc:  # noqa: BLE001 - one bad file must not stop the batch
-        reasons = reasons + (f"FAILED: {exc}",)
-        output, output_hash = None, None
+    if xmp is not None:
+        sidecar_dest = path.with_suffix(".xmp")
+        try:
+            shutil.copy(xmp, sidecar_dest)
+            sidecar_hash = _sha256(sidecar_dest)
+        except Exception as exc:  # noqa: BLE001 - one bad file must not stop the batch
+            reasons = reasons + (f"FAILED: {exc}",)
+            sidecar_dest, sidecar_hash = None, None
 
     record = PhotoRecord(
         source_path=path.name,
@@ -195,17 +203,14 @@ def process_one(path: Path, store: Store, opts: Options, work: Path) -> PhotoRec
         category=result.category,
         sub_style=result.sub_style,
         reasons=reasons,
-        correction=correction if output else "",
+        correction=xmp.name if xmp else "",
         pipeline=PIPELINE,
-        output_path=_relative(output, opts.out),
-        output_hash=output_hash,
-        tool_versions=json.dumps(_tool_versions()),
+        output_path=sidecar_dest.name if sidecar_dest else None,
+        output_hash=sidecar_hash,
+        tool_versions="{}",
         processed_at=_now(),
     )
     store.save(record)
-
-    if not opts.keep_intermediates:
-        decoded.unlink(missing_ok=True)
     return record
 
 
@@ -213,54 +218,43 @@ def run(opts: Options) -> RunResult:
     """Process every discovered photograph."""
     result = RunResult()
     files = discover(opts.source, recursive=opts.recursive)
-    opts.out.mkdir(parents=True, exist_ok=True)
-    db_path = opts.db or (opts.out / ".nef-editor" / "state.db")
 
-    work_ctx = (
-        tempfile.TemporaryDirectory(prefix="nef-editor-")
-        if opts.work is None
-        else None
-    )
-    work_root = Path(opts.work) if opts.work else Path(work_ctx.name)  # type: ignore[union-attr]
-    work_root.mkdir(parents=True, exist_ok=True)
+    db_path = opts.db or (opts.source / ".nef-editor" / "state.db")
 
-    try:
-        with Store(db_path) as store:
-            for path in files:
-                if opts.dry_run:
-                    stat = path.stat()
-                    probe = PhotoRecord(
-                        source_path=path.name,
-                        source_mtime=stat.st_mtime,
-                        source_size=stat.st_size,
-                        category=Category.UNCLASSIFIED,
-                        sub_style=opts.sub_style,
-                        reasons=(),
-                        correction="",
-                        pipeline=PIPELINE,
-                    )
-                    if store.needs_processing(probe, force=opts.force):
-                        result.would_process += 1
-                    else:
-                        result.skipped += 1
-                    continue
-
-                record = process_one(path, store, opts, work_root)
-                if record is None:
-                    result.skipped += 1
-                elif record.output_path is None:
-                    # An unclassified file was never renderable by design; any
-                    # other file with no output is a genuine failure.
-                    if record.category is Category.UNCLASSIFIED:
-                        result.unclassified += 1
-                    else:
-                        result.failed += 1
-                        result.errors.append(f"{path.name}: {record.reasons[-1]}")
+    with Store(db_path) as store:
+        for path in files:
+            if opts.dry_run:
+                stat = path.stat()
+                probe = PhotoRecord(
+                    source_path=path.name,
+                    source_mtime=stat.st_mtime,
+                    source_size=stat.st_size,
+                    category=Category.UNCLASSIFIED,
+                    sub_style=opts.sub_style,
+                    reasons=(),
+                    correction="",
+                    pipeline=PIPELINE,
+                )
+                if store.needs_processing(probe, force=opts.force):
+                    result.would_process += 1
                 else:
+                    result.skipped += 1
+                continue
+
+            record = process_one(path, store, opts)
+            if record is None:
+                result.skipped += 1
+            elif record.output_path is None:
+                if record.category is Category.UNCLASSIFIED:
+                    result.unclassified += 1
+                elif any(r.startswith("FAILED:") for r in record.reasons):
+                    result.failed += 1
+                    result.errors.append(f"{path.name}: {record.reasons[-1]}")
+                else:
+                    # Classified but no preset sidecar exists yet. Not a failure.
                     result.processed += 1
-    finally:
-        if work_ctx is not None:
-            work_ctx.cleanup()
+            else:
+                result.processed += 1
 
     return result
 
@@ -312,7 +306,7 @@ def probe_decoder(sample: Path) -> bool:
         return False
     try:
         with tempfile.TemporaryDirectory(prefix="nef-probe-") as tmp:
-            decode(sample, Path(tmp) / "probe.jpg")
+            decode(sample, Path(tmp) / "probe.tif")
             return True
     except Exception:  # noqa: BLE001
         return False
@@ -322,7 +316,6 @@ def probe_decoder(sample: Path) -> bool:
 __all__ = [
     "Options",
     "RunResult",
-    "build_correction",
     "decode",
     "discover",
     "preset_name",
@@ -330,6 +323,7 @@ __all__ = [
     "process_one",
     "render",
     "run",
+    "select_sidecar",
 ]
 
 # Silence unused-import complaints for names re-exported above.
