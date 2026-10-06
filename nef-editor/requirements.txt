@@ -4,6 +4,8 @@
 # so there is no exiftool and no rawpy. Verified unusable on HE*-compressed files anyway.
 #
 # pyobjc-framework-Quartz: CIRAWFilter for 16-bit linear HE* decode (ADR-0006).
-# macOS-only; the decode stage cannot run on Linux.
+# pyobjc-framework-Vision: face detection for portrait auto-classification (ADR-0010).
+# macOS-only; the decode and face-detection stages cannot run on Linux.
 piexif==1.1.3
 pyobjc-framework-Quartz==12.2.2
+pyobjc-framework-Vision==12.2.2

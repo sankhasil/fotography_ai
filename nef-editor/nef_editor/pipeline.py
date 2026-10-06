@@ -24,6 +24,7 @@ from pathlib import Path
 
 from nef_editor.classify import classify
 from nef_editor.exif import read_metadata, write_category
+from nef_editor.face import count_faces
 from nef_editor.model import Category, PhotoRecord, SubStyle
 from nef_editor.presets import preset_name, select_sidecar
 from nef_editor.store import Store
@@ -164,8 +165,10 @@ def process_one(path: Path, store: Store, opts: Options) -> PhotoRecord | None:
         return None
 
     metadata = read_metadata(path)
+    face_count = count_faces(path)
     result = classify(metadata, category=opts.category, sub_style=opts.sub_style,
-                      only_unclassified=opts.only_unclassified)
+                      only_unclassified=opts.only_unclassified,
+                      face_count=face_count)
 
     if result.category is Category.UNCLASSIFIED:
         record = PhotoRecord(

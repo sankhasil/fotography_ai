@@ -102,3 +102,48 @@ def test_substyle_override_applies() -> None:
 def test_threshold_is_exclusive_below_inclusive_at() -> None:
     assert classify(Metadata(iso=3199)).category is Category.UNCLASSIFIED
     assert classify(Metadata(iso=3200)).category is Category.NIGHT
+
+
+# --- face detection → portrait --------------------------------------------------
+
+
+def test_face_detection_classifies_portrait() -> None:
+    """A photo with a face and low ISO is portrait, not unclassified."""
+    result = classify(Metadata(iso=100), face_count=1)
+    assert result.category is Category.PORTRAIT
+    assert any("face" in r.lower() for r in result.reasons)
+
+
+def test_multiple_faces_still_portrait() -> None:
+    result = classify(Metadata(iso=200), face_count=3)
+    assert result.category is Category.PORTRAIT
+    assert "3 faces" in result.reasons[0]
+
+
+def test_zero_faces_is_not_portrait() -> None:
+    result = classify(Metadata(iso=100), face_count=0)
+    assert result.category is Category.UNCLASSIFIED
+
+
+def test_night_overrides_face_detection() -> None:
+    """ISO >= 3200 wins over face detection — night photos need NR more than portrait tone."""
+    result = classify(Metadata(iso=6400), face_count=1)
+    assert result.category is Category.NIGHT
+
+
+def test_operator_override_wins_over_face_detection() -> None:
+    """--category landscape on a face photo is the operator's call."""
+    result = classify(Metadata(iso=100, ), category=Category.LANDSCAPE, face_count=1)
+    assert result.category is Category.LANDSCAPE
+
+
+def test_only_unclassified_respects_face_detection() -> None:
+    """--only-unclassified does not override a face-detected portrait."""
+    result = classify(Metadata(iso=100), category=Category.LANDSCAPE,
+                       only_unclassified=True, face_count=1)
+    assert result.category is Category.PORTRAIT
+
+
+def test_face_count_in_reasons() -> None:
+    result = classify(Metadata(iso=100), face_count=2)
+    assert "2 faces" in result.reasons[0]

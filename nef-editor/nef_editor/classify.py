@@ -1,18 +1,18 @@
 """Classification of one photograph.
 
-A pure function. No I/O, no subprocess, no clock, no randomness — which is why
-its tests need no binaries and no fixtures.
+Auto-detects two categories:
+- night: ISO >= 3200
+- portrait: face detected in the embedded preview (Apple Vision framework)
 
-Only `night` is detected. That is a measured decision, not an oversight: the
-landscape rule (f/8-f/11) fired 0 times on a f/4-6.3 lens, the macro rule
-conflated "wide" with "close-up", and the shutter test in the night rule was
-vacuous because every shutter in the corpus was faster than 1/800s. See
-verification.md.
+All other categories are operator-assigned with --category.
 
-The operator assigns the remaining categories with --category.
+See verification.md for why the landscape/macro/shutter rules were dropped,
+and ADR-0010 for face detection.
 """
 
 from __future__ import annotations
+
+from pathlib import Path
 
 from nef_editor.model import (
     NIGHT_ISO_THRESHOLD,
@@ -29,22 +29,23 @@ def classify(
     category: Category | None = None,
     sub_style: SubStyle = SubStyle.NEUTRAL,
     only_unclassified: bool = False,
+    face_count: int = 0,
 ) -> Classification:
     """Classify one photograph.
 
-    An explicit `category` always wins and is recorded as a human decision.
-    Otherwise `night` is detected from ISO, and anything else is UNCLASSIFIED
-    rather than guessed at.
+    Priority (highest wins):
+    1. Operator --category (unless --only-unclassified)
+    2. Night (ISO >= 3200)
+    3. Portrait (face detected in preview)
+    4. Operator --category as fallback (when --only-unclassified)
+    5. UNCLASSIFIED
 
-    When `only_unclassified` is True, the explicit `category` is used only
-    as a fallback for photos that auto-detection left UNCLASSIFIED. This lets
-    the operator say "assign landscape to whatever night detection missed"
-    without overriding the night photos.
+    `face_count` is provided by the caller (pipeline.process_one) via
+    the face module. The classifier itself does not do I/O.
 
-    Never raises: an unreadable photograph is UNCLASSIFIED with a reason, and
-    the batch continues.
+    Never raises: an unreadable photograph is UNCLASSIFIED with a reason.
     """
-    # When only_unclassified is False, explicit category always wins (old behaviour).
+    # 1. Operator override (when not --only-unclassified)
     if category is not None and not only_unclassified:
         return Classification(
             category=category,
@@ -52,7 +53,7 @@ def classify(
             reasons=(f"category assigned by operator: {category.value}",),
         )
 
-    # Auto-detect night
+    # 2. Night (ISO-based, strongest signal)
     if metadata.iso is not None and metadata.iso >= NIGHT_ISO_THRESHOLD:
         return Classification(
             category=Category.NIGHT,
@@ -63,15 +64,26 @@ def classify(
             ),
         )
 
-    # Not night. Apply operator assignment if given.
+    # 3. Portrait (face detected)
+    if face_count > 0:
+        return Classification(
+            category=Category.PORTRAIT,
+            sub_style=sub_style,
+            reasons=(
+                f"portrait: {face_count} face{'s' if face_count != 1 else ''} detected",
+                f"lens: {_describe(metadata)}",
+            ),
+        )
+
+    # 4. Operator fallback (when --only-unclassified)
     if category is not None:
-        reason = f"category assigned by operator (fallback): {category.value}"
         return Classification(
             category=category,
             sub_style=sub_style,
-            reasons=(reason,),
+            reasons=(f"category assigned by operator (fallback): {category.value}",),
         )
 
+    # 5. UNCLASSIFIED
     if metadata.iso is None:
         return Classification(
             category=Category.UNCLASSIFIED,
@@ -84,7 +96,8 @@ def classify(
         sub_style=sub_style,
         reasons=(
             f"ISO {metadata.iso} < {NIGHT_ISO_THRESHOLD}; not night",
-            "EXIF carries no scene information; assign a category with --category",
+            "no face detected in preview",
+            "assign a category with --category",
             f"lens: {_describe(metadata)}",
         ),
     )
