@@ -47,6 +47,7 @@ class Options:
     force: bool = False
     db: Path | None = None
     only_unclassified: bool = False
+    no_sidecars: bool = False
 
 
 @dataclass(slots=True)
@@ -187,7 +188,7 @@ def process_one(path: Path, store: Store, opts: Options) -> PhotoRecord | None:
         store.save(record)
         return record
 
-    xmp = select_sidecar(result.category, result.sub_style)
+    xmp = select_sidecar(result.category, result.sub_style) if not opts.no_sidecars else None
     sidecar_dest: Path | None = None
     sidecar_hash: str | None = None
     reasons = result.reasons

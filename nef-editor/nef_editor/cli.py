@@ -55,6 +55,8 @@ def build_parser() -> argparse.ArgumentParser:
     classify.add_argument("--dry-run", action="store_true")
     classify.add_argument("--force", action="store_true")
     classify.add_argument("--db")
+    classify.add_argument("--no-sidecars", action="store_true",
+                          help="skip XMP sidecar writing (classification + DB only)")
 
     # Subcommand: convert-nksc
     nksc_parser = sub.add_parser("convert-nksc", help="Convert darktable XMP sidecars to NX Studio .nksc files")
@@ -111,6 +113,7 @@ def _cmd_classify(args: argparse.Namespace) -> int:
         force=args.force,
         db=Path(args.db).expanduser() if args.db else None,
         only_unclassified=args.only_unclassified,
+        no_sidecars=args.no_sidecars,
     )
 
     try:
