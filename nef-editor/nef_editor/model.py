@@ -11,9 +11,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-# ISO at or above which a photograph is classified `night`.
-# Measured: 56 of 209 files in the reference corpus. See verification.md.
+# ISO at or above which a photo is classified `night` — IF the preview is also dark.
+# Measured: 17 of 59 high-ISO photos are bright daylight (lum > 0.44, shot at 1/8000s).
+# The threshold of 0.35 keeps the 35 real night photos (lum 0.16-0.33) and rejects
+# the daylight false positives. See plan-verification-matrix.md.
 NIGHT_ISO_THRESHOLD = 3200
+NIGHT_LUMINANCE_THRESHOLD = 0.35
 
 
 class Category(StrEnum):

@@ -1,13 +1,16 @@
 """Classification of one photograph.
 
 Auto-detects two categories:
-- night: ISO >= 3200
+- night: ISO >= 3200 AND preview luminance < 0.35 (dark + high ISO)
 - portrait: face detected in the embedded preview (Apple Vision framework)
 
 All other categories are operator-assigned with --category.
 
-See verification.md for why the landscape/macro/shutter rules were dropped,
-and ADR-0010 for face detection.
+The luminance check was added after verification showed 17 of 59 high-ISO
+photos were bright daylight (shot at 1/8000s with high ISO for action).
+ISO alone is not a reliable night signal. See plan-verification-matrix.md.
+
+See ADR-0010 for face detection.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from pathlib import Path
 
 from nef_editor.model import (
     NIGHT_ISO_THRESHOLD,
+    NIGHT_LUMINANCE_THRESHOLD,
     Category,
     Classification,
     Metadata,
@@ -30,18 +34,23 @@ def classify(
     sub_style: SubStyle = SubStyle.NEUTRAL,
     only_unclassified: bool = False,
     face_count: int = 0,
+    luminance: float = 1.0,
 ) -> Classification:
     """Classify one photograph.
 
     Priority (highest wins):
     1. Operator --category (unless --only-unclassified)
-    2. Night (ISO >= 3200)
+    2. Night (ISO >= 3200 AND luminance < 0.35)
     3. Portrait (face detected in preview)
     4. Operator --category as fallback (when --only-unclassified)
     5. UNCLASSIFIED
 
-    `face_count` is provided by the caller (pipeline.process_one) via
-    the face module. The classifier itself does not do I/O.
+    `face_count` and `luminance` are provided by the caller (pipeline.process_one)
+    via the face and preview modules. The classifier itself does not do I/O.
+
+    `luminance` defaults to 1.0 (bright) — if no preview is available, the
+    luminance check is skipped and night detection falls back to ISO alone.
+    Set to -1.0 to explicitly skip (treated as "unknown, don't block night").
 
     Never raises: an unreadable photograph is UNCLASSIFIED with a reason.
     """
@@ -53,16 +62,22 @@ def classify(
             reasons=(f"category assigned by operator: {category.value}",),
         )
 
-    # 2. Night (ISO-based, strongest signal)
+    # 2. Night (ISO + luminance)
     if metadata.iso is not None and metadata.iso >= NIGHT_ISO_THRESHOLD:
-        return Classification(
-            category=Category.NIGHT,
-            sub_style=sub_style,
-            reasons=(
-                f"night: ISO {metadata.iso} >= {NIGHT_ISO_THRESHOLD}",
-                f"lens: {_describe(metadata)}",
-            ),
-        )
+        is_dark = luminance < 0 or luminance < NIGHT_LUMINANCE_THRESHOLD
+        if is_dark:
+            lum_reason = f"luminance {luminance:.3f} < {NIGHT_LUMINANCE_THRESHOLD}"
+            return Classification(
+                category=Category.NIGHT,
+                sub_style=sub_style,
+                reasons=(
+                    f"night: ISO {metadata.iso} >= {NIGHT_ISO_THRESHOLD}",
+                    lum_reason,
+                    f"lens: {_describe(metadata)}",
+                ),
+            )
+        # High ISO but bright — not night
+        lum_reason = f"ISO {metadata.iso} >= {NIGHT_ISO_THRESHOLD} but luminance {luminance:.3f} >= {NIGHT_LUMINANCE_THRESHOLD}; not night (likely high-ISO daylight)"
 
     # 3. Portrait (face detected)
     if face_count > 0:
@@ -89,6 +104,18 @@ def classify(
             category=Category.UNCLASSIFIED,
             sub_style=sub_style,
             reasons=("no ISO in EXIF; cannot detect night",),
+        )
+
+    if metadata.iso >= NIGHT_ISO_THRESHOLD:
+        return Classification(
+            category=Category.UNCLASSIFIED,
+            sub_style=sub_style,
+            reasons=(
+                lum_reason,
+                "no face detected in preview",
+                "assign a category with --category",
+                f"lens: {_describe(metadata)}",
+            ),
         )
 
     return Classification(
