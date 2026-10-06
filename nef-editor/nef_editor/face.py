@@ -1,10 +1,18 @@
-"""Face detection for portrait auto-classification.
+"""Apple Vision framework: face detection + object recognition.
 
-Uses Apple's Vision framework (VNDetectFaceRectanglesRequest) on the
-1620x1080 color JPEG embedded in each NEF (SubIFD 2). No training needed —
-Vision is a pre-trained face detector.
+Face detection (VNDetectFaceRectanglesRequest): for portrait auto-classification.
+Object recognition (VNRecognizeObjectsRequest): for wildlife/pet/landscape.
 
-Verified on 326 NEFs: 13 photos with faces, 0 false positives, 0.04s/photo.
+Both operate on the 1620x1080 color JPEG embedded in each NEF (SubIFD 2).
+No training needed — Vision is pre-trained.
+
+Object → category mapping:
+  people → portrait (when face detection missed)
+  bird, ungulates, feline, fish, seafood → wildlife
+  canine → pet
+  flower → macro
+  watercraft, kite, aircraft, automobile, sign → landscape
+  bicycle, furniture, tool, document → (not used for classification)
 
 See ADR-0010.
 """
@@ -12,9 +20,34 @@ See ADR-0010.
 from __future__ import annotations
 
 import struct
+import tempfile
 from pathlib import Path
 
 from nef_editor.exif import _read_ifd
+
+
+# Vision object labels → category
+OBJECT_TO_CATEGORY: dict[str, str] = {
+    "people": "portrait",
+    "bird": "wildlife",
+    "ungulates": "wildlife",
+    "feline": "wildlife",
+    "fish": "wildlife",
+    "seafood": "wildlife",
+    "canine": "pet",
+    "flower": "macro",
+    "watercraft": "landscape",
+    "kite": "landscape",
+    "aircraft": "landscape",
+    "automobile": "landscape",
+    "sign": "landscape",
+    "bicycle": "landscape",
+    "headgear": None,  # not a category signal
+    "watersport": "landscape",
+    "furniture": None,
+    "tool": None,
+    "document": None,
+}
 
 
 def extract_preview_jpeg(nef_path: Path) -> bytes | None:
@@ -93,3 +126,54 @@ def count_faces(nef_path: Path) -> int:
             Path(tmp_path).unlink(missing_ok=True)
         except (NameError, OSError):
             pass
+
+
+def _detect_objects(jpeg_bytes: bytes) -> list[str]:
+    """Run VNRecognizeObjectsRequest on a JPEG. Returns object labels."""
+    tmp = None
+    try:
+        import Quartz
+        import Vision
+        from Foundation import NSURL
+
+        tmp = Path(tempfile.mktemp(suffix='.jpg'))
+        tmp.write_bytes(jpeg_bytes)
+        src = NSURL.fileURLWithPath_(str(tmp))
+        image_source = Quartz.CGImageSourceCreateWithURL(src, None)
+        if not image_source:
+            return []
+        cg_image = Quartz.CGImageSourceCreateImageAtIndex(image_source, 0, None)
+        if not cg_image:
+            return []
+
+        request = Vision.VNRecognizeObjectsRequest.alloc().init()
+        handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(cg_image, None)
+        handler.performRequests_error_([request], None)
+        results = request.results()
+        if not results:
+            return []
+
+        labels = []
+        for r in results:
+            if hasattr(r, 'labels'):
+                for lbl in r.labels():
+                    labels.append(str(lbl.identifier()))
+            elif hasattr(r, 'identifier'):
+                labels.append(str(r.identifier()))
+        return labels
+    except Exception:
+        return []
+    finally:
+        if tmp is not None:
+            tmp.unlink(missing_ok=True)
+
+
+def detect_objects(nef_path: Path) -> list[str]:
+    """Detect objects in a NEF's embedded preview. Returns Vision labels.
+
+    Returns [] on any failure. Never raises.
+    """
+    jpeg_bytes = extract_preview_jpeg(nef_path)
+    if not jpeg_bytes:
+        return []
+    return _detect_objects(jpeg_bytes)

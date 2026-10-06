@@ -33,6 +33,8 @@ class Category(StrEnum):
     NIGHT = "night"
     ARCHITECTURE = "architecture"
     PRODUCT = "product"
+    WILDLIFE = "wildlife"
+    PET = "pet"
     UNCLASSIFIED = "unclassified"
 
 

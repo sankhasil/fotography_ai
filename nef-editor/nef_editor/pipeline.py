@@ -24,7 +24,7 @@ from pathlib import Path
 
 from nef_editor.classify import classify
 from nef_editor.exif import read_metadata, write_category
-from nef_editor.face import count_faces
+from nef_editor.face import count_faces, detect_objects
 from nef_editor.model import Category, PhotoRecord, SubStyle
 from nef_editor.preview import mean_luminance
 from nef_editor.presets import preset_name, select_sidecar
@@ -169,9 +169,10 @@ def process_one(path: Path, store: Store, opts: Options) -> PhotoRecord | None:
     metadata = read_metadata(path)
     face_count = count_faces(path)
     lum = mean_luminance(path)
+    objects = detect_objects(path) if face_count == 0 else []
     result = classify(metadata, category=opts.category, sub_style=opts.sub_style,
                       only_unclassified=opts.only_unclassified,
-                      face_count=face_count, luminance=lum)
+                      face_count=face_count, luminance=lum, objects=objects)
 
     if result.category is Category.UNCLASSIFIED:
         record = PhotoRecord(

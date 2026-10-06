@@ -26,6 +26,35 @@ from nef_editor.model import (
     SubStyle,
 )
 
+# Object labels that map to each auto-detectable category
+_OBJECT_TO_CATEGORY: dict[str, str] = {
+    "people": "portrait",
+    "bird": "wildlife",
+    "ungulates": "wildlife",
+    "feline": "wildlife",
+    "fish": "wildlife",
+    "seafood": "wildlife",
+    "canine": "pet",
+    "flower": "macro",
+    "watercraft": "landscape",
+    "kite": "landscape",
+    "aircraft": "landscape",
+    "automobile": "landscape",
+    "sign": "landscape",
+    "bicycle": "landscape",
+    "watersport": "landscape",
+}
+
+
+def _objects_to_category(objects: list[str]) -> Category | None:
+    """Map Vision object labels to a category. Returns highest-priority match."""
+    for label in objects:
+        cat = _OBJECT_TO_CATEGORY.get(label)
+        if cat:
+            from nef_editor.model import Category as C
+            return C(cat)
+    return None
+
 
 def classify(
     metadata: Metadata,
@@ -35,24 +64,18 @@ def classify(
     only_unclassified: bool = False,
     face_count: int = 0,
     luminance: float = 1.0,
+    objects: list[str] | None = None,
 ) -> Classification:
     """Classify one photograph.
 
     Priority (highest wins):
     1. Operator --category (unless --only-unclassified)
     2. Night (ISO >= 3200 AND luminance < 0.35)
-    3. Portrait (face detected in preview)
-    4. Operator --category as fallback (when --only-unclassified)
-    5. UNCLASSIFIED
-
-    `face_count` and `luminance` are provided by the caller (pipeline.process_one)
-    via the face and preview modules. The classifier itself does not do I/O.
-
-    `luminance` defaults to 1.0 (bright) — if no preview is available, the
-    luminance check is skipped and night detection falls back to ISO alone.
-    Set to -1.0 to explicitly skip (treated as "unknown, don't block night").
-
-    Never raises: an unreadable photograph is UNCLASSIFIED with a reason.
+    3. Portrait (face detected)
+    4. Object detection (people → portrait, canine → pet, bird/ungulates → wildlife,
+       flower → macro, watercraft/kite → landscape)
+    5. Operator --category as fallback (when --only-unclassified)
+    6. UNCLASSIFIED
     """
     # 1. Operator override (when not --only-unclassified)
     if category is not None and not only_unclassified:
@@ -90,7 +113,21 @@ def classify(
             ),
         )
 
-    # 4. Operator fallback (when --only-unclassified)
+    # 4. Object detection (catches what face detection missed)
+    if objects:
+        obj_cat = _objects_to_category(objects)
+        if obj_cat is not None:
+            obj_str = ", ".join(objects[:5])
+            return Classification(
+                category=obj_cat,
+                sub_style=sub_style,
+                reasons=(
+                    f"{obj_cat.value}: objects detected: {obj_str}",
+                    f"lens: {_describe(metadata)}",
+                ),
+            )
+
+    # 5. Operator fallback (when --only-unclassified)
     if category is not None:
         return Classification(
             category=category,
