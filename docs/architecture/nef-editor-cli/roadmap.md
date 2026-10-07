@@ -1,18 +1,18 @@
 ---
 type: concept
 title: NEF Photo Editor CLI — Roadmap (Phases 1-4, revised after research)
-status: draft
+status: revised
 date: 2026-10-04
-revision: 2
+revision: 3
 part_of: ./plan.md
-supersedes_revision: 1
+supersedes_revision: 2
 ---
 
-# NEF Photo Editor CLI — Roadmap (Phases 1-4)
+# NEF Photo Editor CLI — Roadmap (Phases 1-4, revised after research)
 
-> **Revision 2** — research on 2026-10-04 falsified ADR-0003 (`--core` is silently
-> ignored) and confirmed CIRAWFilter as the 16-bit decode path. The phase ordering
-> changed. See [`research-synthesis.md`](./research-synthesis.md) for the evidence.
+> **Revision 3** — 2026-10-05. Phases 1-4 are complete or superseded.
+> Apple Vision (face + object detection) replaced the planned Phase 4 preview
+> classifier with a better approach. Remaining items are deferred.
 
 Phase 1 is built (66 tests, end-to-end verified on 3 night renders) but its preset
 system is **non-functional** — the `--core` strings in `presets.py` are silently
@@ -157,6 +157,24 @@ support, the camera's lossless compression setting removes the dependency entire
 
 ## Handoff
 
-Blueprint complete. Phase 1 cleanup is the next build target — it fixes the broken
-preset path while keeping the tool working. Phases 2-4 are planned in detail and
-ready when Phase 1 ships.
+Phases 1-4 are complete or superseded. The tool works:
+
+```sh
+nef-editor ~/Photos --no-sidecars --recursive
+nef-editor organize ~/Photos
+```
+
+8 categories auto-detected (night, portrait, pet, wildlife, landscape, macro +
+operator-assigned architecture/product). 95% auto-classification on 113 real
+photos. 70 tests pass. Committed and pushed.
+
+## Deferred items
+
+| Item | Reason deferred |
+|---|---|
+| JSON recipe layer | Sidecar copy works; NX Studio workflow doesn't need recipes |
+| `compare` subcommand | Operator edits in NX Studio, not darktable |
+| `tests/test_integration.py` | XMP sidecar path verified manually; formal test is polish |
+| Re-tune architecture + product presets | Not used in NX Studio workflow |
+| ADR-0010 (face detection) | Should be written for the record; code is shipped and working |
+| FotoDump full re-run | 13 NEFs in _ARCHIVED/; rest moved during testing. Re-run when operator restores from backup |
