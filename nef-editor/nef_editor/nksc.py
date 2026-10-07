@@ -293,9 +293,133 @@ _MINIMAL_TEMPLATE = """<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>
          <nine:Label>0</nine:Label>
          <nine:Rating>0</nine:Rating>
          <nine:Trim>/////////////////////w==</nine:Trim>
-      </rdf:Description>
-   </rdf:RDF>
-</x:xmpmeta>
+       </rdf:Description>
+    </rdf:RDF>
+ </x:xmpmeta>
 
-<?xpacket end="w"?>
+ <?xpacket end="w"?>
 """
+
+
+# --- Direct .nksc generation from per-category presets -------------------------
+# ponytail: The darktable→.nksc conversion path above requires a darktable XMP
+# for every photo, which the operator does not always have. This second path
+# generates .nksc sidecars directly from a master template (a known-good macro
+# sidecar) by substituting the crd: values per category. NX Studio matches a
+# sidecar to its NEF by filename only, so the inner xmp:CreateDate left over
+# from the template is harmless; revisit if NX Studio ever keys on it.
+
+
+def apply_preset_to_folder(
+    folder: Path,
+    category: Category,
+    *,
+    dry_run: bool = False,
+    master_template: Path | None = None,
+) -> dict:
+    """Apply a category preset to every .NEF in `folder`, writing .nksc sidecars.
+
+    Skips NEFs that already have a non-empty sidecar (operator decision: never
+    clobber an edited photo). Uses the macro/DSC_5335 sample sidecar as the
+    master template by default — it is verified to load in NX Studio.
+
+    Returns counts and, in dry-run, a per-photo plan.
+    """
+    from nef_editor.exif import read_metadata
+    from nef_editor.presets import nksc_preset
+
+    preset = nksc_preset(category)
+    if preset is None:
+        return {"written": 0, "skipped": 0, "errors": 0, "plan": [], "error": f"no preset for category {category}"}
+
+    if master_template is None:
+        # macro/DSC_5335.NEF.nksc is the verified baseline.
+        master_template = folder.parent / "macro" / "NKSC_PARAM" / "DSC_5335.NEF.nksc"
+    if not master_template.exists():
+        return {"written": 0, "skipped": 0, "errors": 0, "plan": [], "error": f"master template missing: {master_template}"}
+
+    template_raw = master_template.read_text()
+    packet = _extract_xmlpacket(template_raw)
+    if packet is None:
+        return {"written": 0, "skipped": 0, "errors": 0, "plan": [], "error": "master template has no ast:XMLPackets block"}
+
+    span_prefix, b64_inner_raw, span_suffix, span_start, span_end = packet
+    b64_clean = b64_inner_raw.replace("&#xA;", "").replace("\n", "")
+    inner_xmp = base64.b64decode(b64_clean).decode("utf-8")
+
+    counts: dict = {"written": 0, "skipped": 0, "errors": 0, "plan": []}
+    nksc_dir = folder / "NKSC_PARAM"
+
+    for nef in sorted(folder.glob("*.NEF")):
+        sidecar = nksc_dir / f"{nef.name}.nksc"
+        # ponytail: 30KB threshold separates real NX Studio sidecars (~62KB) from
+        # empty placeholders (~19KB). Anything above the threshold is treated as
+        # user-edited and preserved; anything below is regenerated. Operator call
+        # after inspecting the Travemunde sample set on 2026-10-07.
+        if sidecar.exists() and sidecar.stat().st_size > 30_000:
+            counts["skipped"] += 1
+            counts["plan"].append(("skip", nef.name, None, None, str(sidecar)))
+            continue
+
+        meta = read_metadata(nef)
+        iso = meta.iso or 100
+        lumi = _scale_luminance_smoothing(iso, preset["lumi_floor"], preset["lumi_ceiling"])
+
+        if dry_run:
+            counts["plan"].append(("write", nef.name, iso, lumi, str(sidecar)))
+            counts["written"] += 1
+            continue
+
+        try:
+            new_inner = _apply_params_to_xmp(inner_xmp, preset, lumi)
+            new_b64 = base64.b64encode(new_inner.encode("utf-8")).decode("ascii")
+            wrapped = "&#xA;".join(new_b64[i : i + 76] for i in range(0, len(new_b64), 76))
+            new_section = span_prefix + wrapped + span_suffix
+            new_content = template_raw[:span_start] + new_section + template_raw[span_end:]
+            nksc_dir.mkdir(exist_ok=True)
+            sidecar.write_text(new_content)
+            counts["plan"].append(("write", nef.name, iso, lumi, str(sidecar)))
+            counts["written"] += 1
+        except Exception as exc:
+            counts["errors"] += 1
+            counts["plan"].append(("error", nef.name, None, None, str(exc)))
+
+    return counts
+
+
+def _scale_luminance_smoothing(iso: int, floor: int, ceiling: int) -> int:
+    """Linear ISO -> LuminanceSmoothing. floor at ISO <= 800, ceiling at >= 6400."""
+    if iso <= 800:
+        return floor
+    if iso >= 6400:
+        return ceiling
+    t = (iso - 800) / (6400 - 800)
+    return round(floor + t * (ceiling - floor))
+
+
+def _apply_params_to_xmp(inner_xmp: str, preset: dict, lumi_smoothing: int) -> str:
+    """Substitute the per-category crd values into the decoded inner XMP."""
+    replacements = {
+        "LuminanceSmoothing": lumi_smoothing,
+        "Sharpness": preset["Sharpness"],
+        "SharpenDetail": preset["SharpenDetail"],
+        "SharpenEdgeMasking": preset["SharpenEdgeMasking"],
+        "Clarity2012": preset["Clarity2012"],
+        "Texture": preset["Texture"],
+    }
+    out = inner_xmp
+    for key, val in replacements.items():
+        out = re.sub(rf"<crd:{key}>[^<]*</crd:{key}>", f"<crd:{key}>{val}</crd:{key}>", out)
+    return out
+
+
+def _extract_xmlpacket(template_raw: str) -> tuple[str, str, str, int, int] | None:
+    """Find the ast:XMLPackets block. Returns (prefix, b64_inner, suffix, start, end)."""
+    pattern = re.compile(
+        r'(<ast:XMLPackets rdf:parseType="Resource">\s*<rdf:value>)(.*?)(</rdf:value>\s*<astype:Type>Binary</astype:Type>\s*</ast:XMLPackets>)',
+        re.DOTALL,
+    )
+    m = pattern.search(template_raw)
+    if not m:
+        return None
+    return m.group(1), m.group(2), m.group(3), m.start(), m.end()

@@ -45,6 +45,27 @@ def all_preset_names() -> tuple[str, ...]:
     )
 
 
+# ponytail: per-category crd params for direct .nksc generation.
+# Tuned by operator from manual NX Studio edits on the Travemunde sample set
+# (5 photos per category). Same baseline (Exposure 0, Highlights 0, Shadows 0,
+# Camera Vivid, all HSL = 0, ColorNR 25/50/50, Sharpness r2/d25, LumiDetail 75)
+# — only the subject-relevant tweaks vary. LuminanceSmoothing scales linearly
+# with ISO between lumi_floor (ISO <= 800) and lumi_ceiling (ISO >= 6400).
+# Replace with per-ISO lookup if a finer curve is ever needed.
+NKSC_PRESETS: dict[Category, dict[str, int]] = {
+    Category.MACRO:     {"Sharpness": 54, "SharpenDetail": 25, "SharpenEdgeMasking": 0, "Clarity2012": 4,  "Texture": 8,  "lumi_floor": 54, "lumi_ceiling": 56},
+    Category.LANDSCAPE: {"Sharpness": 54, "SharpenDetail": 25, "SharpenEdgeMasking": 2, "Clarity2012": 8,  "Texture": 12, "lumi_floor": 52, "lumi_ceiling": 56},
+    Category.WILDLIFE:  {"Sharpness": 60, "SharpenDetail": 35, "SharpenEdgeMasking": 3, "Clarity2012": 6,  "Texture": 8,  "lumi_floor": 50, "lumi_ceiling": 54},
+    Category.PET:       {"Sharpness": 50, "SharpenDetail": 20, "SharpenEdgeMasking": 0, "Clarity2012": 2,  "Texture": 6,  "lumi_floor": 52, "lumi_ceiling": 56},
+    Category.PORTRAIT:  {"Sharpness": 40, "SharpenDetail": 15, "SharpenEdgeMasking": 0, "Clarity2012": -2, "Texture": 4,  "lumi_floor": 56, "lumi_ceiling": 60},
+}
+
+
+def nksc_preset(category: Category) -> dict[str, int] | None:
+    """Return the per-category crd preset, or None if category has no preset."""
+    return NKSC_PRESETS.get(category)
+
+
 def existing_presets() -> tuple[str, ...]:
     """Names of XMP sidecars actually present in presets/."""
     if not PRESETS_DIR.exists():

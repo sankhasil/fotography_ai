@@ -39,6 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
             f"sub-styles: {_choices('sub-style', SUB_STYLES)}\n"
             "\nSubcommands:\n"
             "  convert-nksc <folder>  Convert darktable .xmp sidecars to NX Studio .nksc files\n"
+            "  apply-nksc <root>      Generate NX Studio .nksc sidecars per category subfolder\n"
             "  organize <folder>      Move NEFs+XMPs into category subfolders using the DB"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -69,6 +70,14 @@ def build_parser() -> argparse.ArgumentParser:
     org_parser.add_argument("folder", help="folder with .nef-editor/state.db")
     org_parser.add_argument("--dry-run", action="store_true", help="show what would move, move nothing")
 
+    # Subcommand: apply-nksc
+    apply_parser = sub.add_parser(
+        "apply-nksc",
+        help="Generate NX Studio .nksc sidecars per category subfolder using per-category presets",
+    )
+    apply_parser.add_argument("root", help="root folder containing category subfolders (e.g. Travemunde Strand Dracen)")
+    apply_parser.add_argument("--dry-run", action="store_true", help="show what would be written, write nothing")
+
     return parser
 
 
@@ -76,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
     # If no subcommand given, insert "classify" as default
     if argv is None:
         argv = list(sys.argv[1:])
-    if argv and argv[0] not in ("convert-nksc", "organize", "-h", "--help"):
+    if argv and argv[0] not in ("convert-nksc", "apply-nksc", "organize", "-h", "--help"):
         argv = ["classify"] + argv
     elif not argv:
         argv = ["classify"]
@@ -89,6 +98,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "convert-nksc":
         return _cmd_convert_nksc(args)
+    elif args.command == "apply-nksc":
+        return _cmd_apply_nksc(args)
     elif args.command == "organize":
         return _cmd_organize(args)
     elif args.command == "classify":
@@ -153,6 +164,61 @@ def _cmd_convert_nksc(args: argparse.Namespace) -> int:
 
     action = "would convert" if args.dry_run else "converted"
     print(f"{action} {total['converted']}, skipped {total['skipped']}, errors {total['errors']}")
+    return 1 if total["errors"] else 0
+
+
+def _cmd_apply_nksc(args: argparse.Namespace) -> int:
+    from nef_editor.model import Category
+    from nef_editor.nksc import apply_preset_to_folder
+
+    root = Path(args.root).expanduser()
+    if not root.is_dir():
+        print(f"error: not a folder: {root}", file=sys.stderr)
+        return 2
+
+    # ponytail: iterate child folders whose name is a known category. A category
+    # folder is identified by name (matches Category enum value). The macro
+    # folder must exist because it holds the master template.
+    category_folders: list[tuple[Category, Path]] = []
+    for sub in sorted(p for p in root.iterdir() if p.is_dir()):
+        try:
+            cat = Category(sub.name)
+        except ValueError:
+            continue
+        category_folders.append((cat, sub))
+
+    if not category_folders:
+        print(f"error: no category subfolders under {root}", file=sys.stderr)
+        return 2
+
+    if not (root / "macro" / "NKSC_PARAM" / "DSC_5335.NEF.nksc").exists():
+        print(
+            "error: master template missing at <root>/macro/NKSC_PARAM/DSC_5335.NEF.nksc",
+            file=sys.stderr,
+        )
+        return 2
+
+    total = {"written": 0, "skipped": 0, "errors": 0}
+    for cat, folder in category_folders:
+        print(f"=== {cat.value} ===")
+        result = apply_preset_to_folder(folder, cat, dry_run=args.dry_run)
+        if "error" in result:
+            print(f"  error: {result['error']}", file=sys.stderr)
+            continue
+        for action, name, iso, lumi, target in result["plan"]:
+            if action == "skip":
+                print(f"  skip  {name}  (existing sidecar)")
+            elif action == "write":
+                tag = "would write" if args.dry_run else "wrote"
+                print(f"  {tag}  {name}  ISO={iso}  LumiSmooth={lumi}  -> {target}")
+            elif action == "error":
+                print(f"  error {name}: {target}", file=sys.stderr)
+        for k in total:
+            total[k] += result[k]
+        print()
+
+    action = "would write" if args.dry_run else "wrote"
+    print(f"{action} {total['written']}, skipped {total['skipped']}, errors {total['errors']}")
     return 1 if total["errors"] else 0
 
 
